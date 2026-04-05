@@ -1,0 +1,139 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Company;
+use App\Models\Vendor;
+use App\Services\AuditService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class VendorController extends Controller
+{
+    public function __construct(private AuditService $audit) {}
+
+    public function index(Request $request): JsonResponse
+    {
+        $user  = $request->user();
+        $query = Vendor::query()
+            ->when(! $user->isSuperAdmin() && $user->isVendorUser(), fn($q) => $q->where('id', $user->vendor_id))
+            ->when($request->search, fn($q, $s) => $q->where('name', 'like', "%{$s}%"))
+            ->when($request->status, fn($q, $s) => $q->where('status', $s));
+
+        return response()->json($query->paginate(20));
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        if (! $request->user()->isSuperAdmin()) {
+            abort(403, 'Only Super Admin can create vendors.');
+        }
+
+        $data = $request->validate([
+            'name'           => 'required|string|max:120|unique:vendors',
+            'code'           => 'required|string|max:20|unique:vendors',
+            'address'        => 'required|string',
+            'city'           => 'required|string',
+            'state'          => 'required|string',
+            'pin'            => 'required|string|size:6',
+            'contact_person' => 'required|string',
+            'contact_email'  => 'required|email|unique:vendors,contact_email',
+            'contact_phone'  => 'required|string',
+            'gst_number'     => 'nullable|string|max:15',
+            'pan_number'     => 'nullable|string|max:10',
+            'license_number' => 'nullable|string',
+        ]);
+
+        $vendor = Vendor::create(array_merge($data, ['status' => 'active']));
+        $this->audit->log($request->user()->id, 'vendor_created', Vendor::class, $vendor->id);
+
+        return response()->json($vendor, 201);
+    }
+
+    public function show(Vendor $vendor): JsonResponse
+    {
+        return response()->json($vendor->load('approvedCompanies'));
+    }
+
+    public function update(Request $request, Vendor $vendor): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user->isSuperAdmin() && ! ($user->isVendorUser() && $user->vendor_id === $vendor->id)) {
+            abort(403, 'Access denied.');
+        }
+
+        $data = $request->validate([
+            'name'           => "sometimes|string|max:120|unique:vendors,name,{$vendor->id}",
+            'address'        => 'sometimes|string',
+            'city'           => 'sometimes|string',
+            'state'          => 'sometimes|string',
+            'contact_person' => 'sometimes|string',
+            'contact_email'  => 'sometimes|email',
+            'contact_phone'  => 'sometimes|string',
+            'gst_number'     => 'nullable|string',
+        ]);
+
+        $vendor->update($data);
+        $this->audit->log($user->id, 'vendor_updated', Vendor::class, $vendor->id);
+
+        return response()->json($vendor->fresh());
+    }
+
+    public function destroy(Request $request, Vendor $vendor): JsonResponse
+    {
+        if (! $request->user()->isSuperAdmin()) abort(403);
+
+        $vendor->delete();
+        $this->audit->log($request->user()->id, 'vendor_deleted', Vendor::class, $vendor->id);
+
+        return response()->json(['message' => 'Vendor deleted.']);
+    }
+
+    // ── Vendor requests access to a company ───────────────────────────────────
+
+    public function requestCompany(Request $request, Vendor $vendor, Company $company): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($user->isVendorUser() && $user->vendor_id !== $vendor->id) {
+            abort(403, 'Cannot request on behalf of another vendor.');
+        }
+
+        $existing = $vendor->companies()->where('company_id', $company->id)->first();
+
+        if ($existing) {
+            return response()->json([
+                'message' => 'Already ' . $existing->pivot->status . ' for this company.',
+            ], 422);
+        }
+
+        $vendor->companies()->attach($company->id, [
+            'status'     => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->audit->log($user->id, 'vendor_company_request', Company::class, $company->id, [
+            'vendor_id' => $vendor->id,
+        ]);
+
+        return response()->json([
+            'message' => "Access request sent to {$company->name}. Waiting for approval.",
+        ]);
+    }
+
+    public function myCompanies(Request $request, Vendor $vendor): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user->isSuperAdmin() && ! ($user->isVendorUser() && $user->vendor_id === $vendor->id)) {
+            abort(403);
+        }
+
+        $companies = $vendor->companies()
+            ->withPivot(['status', 'approved_at', 'rejection_reason'])
+            ->get();
+
+        return response()->json($companies);
+    }
+}

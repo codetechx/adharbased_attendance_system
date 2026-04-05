@@ -1,0 +1,17 @@
+<?php
+
+use Illuminate\Foundation\Inspiring;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
+
+Artisan::command('inspire', function () {
+    $this->comment(Inspiring::quote());
+})->purpose('Display an inspiring quote');
+
+// ── Scheduled tasks ────────────────────────────────────────────────────────────
+
+// Mark open assignments as completed at end of day
+Schedule::command('attendance:close-day')->dailyAt('23:59');
+
+// Prune audit logs older than 1 year
+Schedule::command('audit:prune --days=365')->monthly();
