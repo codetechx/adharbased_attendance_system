@@ -1,0 +1,112 @@
+import { NavLink } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  LayoutDashboard, Building2, Users, UserCheck, ClipboardList,
+  Fingerprint, BarChart2, AlertTriangle, ShieldCheck, X
+} from "lucide-react";
+
+const NAV = [
+  {
+    label: "Overview",
+    items: [
+      { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard", roles: ["all"] },
+    ],
+  },
+  {
+    label: "Administration",
+    items: [
+      { to: "/companies", icon: Building2,  label: "Companies", roles: ["super_admin"] },
+      { to: "/vendors",   icon: Users,      label: "Vendors",   roles: ["super_admin", "company_admin", "company_gate", "vendor_admin", "vendor_operator"] },
+      { to: "/vendors/approval", icon: ShieldCheck, label: "Vendor Approvals", roles: ["super_admin", "company_admin"] },
+    ],
+  },
+  {
+    label: "Workers",
+    items: [
+      { to: "/workers",          icon: UserCheck,    label: "All Workers",   roles: ["all"] },
+      { to: "/workers/register", icon: Users,        label: "Register Worker", roles: ["super_admin", "vendor_admin", "vendor_operator"] },
+      { to: "/workers/assign",   icon: ClipboardList, label: "Assign Workers", roles: ["super_admin", "vendor_admin"] },
+    ],
+  },
+  {
+    label: "Attendance",
+    items: [
+      { to: "/attendance",            icon: BarChart2,    label: "Attendance Log",  roles: ["all"] },
+      { to: "/attendance/mark",       icon: Fingerprint,  label: "Mark Attendance", roles: ["super_admin", "company_admin", "company_gate"] },
+      { to: "/attendance/exceptions", icon: AlertTriangle, label: "Exceptions",     roles: ["super_admin", "company_admin", "vendor_admin"] },
+    ],
+  },
+];
+
+export default function Sidebar({ open, onClose }) {
+  const { user } = useAuth();
+
+  const canSee = (roles) => roles.includes("all") || roles.includes(user?.role);
+
+  if (!open) return null;
+
+  return (
+    <>
+      {/* Mobile overlay */}
+      <div
+        className="fixed inset-0 bg-black/30 z-20 lg:hidden"
+        onClick={onClose}
+      />
+
+      <aside className="fixed left-0 top-0 bottom-0 w-64 bg-white border-r border-gray-200 z-30 flex flex-col">
+        {/* Logo */}
+        <div className="h-16 flex items-center justify-between px-5 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Fingerprint className="w-7 h-7 text-brand-600" />
+            <span className="text-lg font-bold text-gray-900">AMS</span>
+          </div>
+          <button className="p-1 rounded lg:hidden" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Role badge */}
+        <div className="px-4 py-2 bg-brand-50 border-b border-brand-100">
+          <p className="text-xs text-brand-700 font-medium truncate">{user?.name}</p>
+          <p className="text-xs text-brand-500 capitalize">{user?.role?.replace("_", " ")}</p>
+          {user?.company && <p className="text-xs text-gray-500 truncate">{user.company.name}</p>}
+          {user?.vendor && <p className="text-xs text-gray-500 truncate">{user.vendor.name}</p>}
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
+          {NAV.map((section) => {
+            const visibleItems = section.items.filter((i) => canSee(i.roles));
+            if (!visibleItems.length) return null;
+
+            return (
+              <div key={section.label}>
+                <p className="px-3 mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  {section.label}
+                </p>
+                <div className="space-y-0.5">
+                  {visibleItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          isActive
+                            ? "bg-brand-50 text-brand-700"
+                            : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                        }`
+                      }
+                    >
+                      <item.icon size={17} />
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </nav>
+      </aside>
+    </>
+  );
+}

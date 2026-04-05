@@ -1,0 +1,50 @@
+# ── Environment & secrets ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Docker runtime ────────────────────────────────────────────────────────────
+nginx/logs/
+
+# ── Laravel backend ───────────────────────────────────────────────────────────
+backend/.env
+backend/vendor/
+backend/node_modules/
+backend/storage/app/public/
+backend/storage/app/aadhaar/
+backend/storage/framework/cache/
+backend/storage/framework/sessions/
+backend/storage/framework/views/
+backend/storage/logs/
+backend/bootstrap/cache/
+backend/.phpunit.result.cache
+backend/public/hot
+backend/public/storage
+
+# ── React frontend ────────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ── Biometric agent ───────────────────────────────────────────────────────────
+biometric-agent/node_modules/
+
+# ── Python PDF service ────────────────────────────────────────────────────────
+pdf-service/__pycache__/
+pdf-service/*.pyc
+pdf-service/.venv/
+pdf-service/venv/
+
+# ── OS & editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.suo
+*.user
+
+# ── Logs & temp ───────────────────────────────────────────────────────────────
+*.log
+*.tmp
+*.swp
