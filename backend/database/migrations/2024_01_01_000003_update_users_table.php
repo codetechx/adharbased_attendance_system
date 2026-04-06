@@ -10,7 +10,8 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             $table->enum('role', [
-                'super_admin', 'company_admin', 'company_gate', 'vendor_admin', 'vendor_operator'
+                'super_admin', 'company_admin', 'company_gate',
+                'vendor_admin', 'vendor_operator',
             ])->default('company_gate')->after('email');
             $table->foreignId('company_id')->nullable()->after('role')->constrained('companies')->nullOnDelete();
             $table->foreignId('vendor_id')->nullable()->after('company_id')->constrained('vendors')->nullOnDelete();
@@ -22,6 +23,8 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
+            $table->dropForeign(['company_id']);
+            $table->dropForeign(['vendor_id']);
             $table->dropColumn(['role', 'company_id', 'vendor_id', 'phone', 'is_active']);
         });
     }

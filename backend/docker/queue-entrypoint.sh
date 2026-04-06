@@ -26,5 +26,15 @@ until php -r "
     sleep 2
 done
 
-echo "[Queue] MySQL ready. Starting queue worker..."
+mkdir -p /var/www/html/bootstrap/cache
+mkdir -p /var/www/html/storage/framework/cache/data
+mkdir -p /var/www/html/storage/framework/sessions
+mkdir -p /var/www/html/storage/framework/views
+mkdir -p /var/www/html/storage/logs
+chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+
+echo "[Queue] MySQL ready."
+echo "[Queue] Vendor check: $(ls /var/www/html/vendor/predis 2>&1)"
+echo "[Queue] Predis class: $(php -r "require '/var/www/html/vendor/autoload.php'; echo class_exists('Predis\\\Client') ? 'FOUND' : 'MISSING';" 2>&1)"
+echo "[Queue] Starting queue worker..."
 exec php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600

@@ -3,7 +3,13 @@
 # Uses composer image to create a full Laravel 11 project and pull all packages.
 # This layer is cached; only rebuilds when composer.json changes.
 # ══════════════════════════════════════════════════════════════════════════════
-FROM composer:2 AS builder
+FROM php:8.4-cli-alpine AS builder
+
+# ── Composer + build deps ────────────────────────────────────────────────────
+RUN apk add --no-cache git curl unzip
+RUN php -r "copy('https://getcomposer.org/installer','/tmp/composer-setup.php');" \
+    && php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer \
+    && rm -f /tmp/composer-setup.php
 
 WORKDIR /app
 
@@ -15,12 +21,13 @@ RUN composer create-project "laravel/laravel:^11.0" . \
 RUN composer require \
     "laravel/sanctum:^4.0" \
     "guzzlehttp/guzzle:^7.2" \
+    "predis/predis:^2.0" \
     --no-interaction --quiet
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Stage 2 — PHP-FPM runtime image
 # ══════════════════════════════════════════════════════════════════════════════
-FROM php:8.3-fpm-alpine
+FROM php:8.4-fpm-alpine
 
 # ── System dependencies ────────────────────────────────────────────────────────
 RUN apk add --no-cache \
@@ -30,6 +37,9 @@ RUN apk add --no-cache \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
         pdo_mysql mbstring exif pcntl bcmath gd zip intl opcache sockets
+
+# Bring composer into the runtime image for autoload generation
+COPY --from=builder /usr/local/bin/composer /usr/local/bin/composer
 
 # ── PHP runtime config ─────────────────────────────────────────────────────────
 COPY docker/php/php.ini  /usr/local/etc/php/conf.d/app.ini
@@ -70,7 +80,8 @@ RUN mkdir -p \
 # ── Entrypoint: runs setup on every container start, then launches php-fpm ────
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY docker/queue-entrypoint.sh /queue-entrypoint.sh
-RUN chmod +x /entrypoint.sh /queue-entrypoint.sh
+RUN sed -i 's/\r//' /entrypoint.sh /queue-entrypoint.sh \
+    && chmod +x /entrypoint.sh /queue-entrypoint.sh
 
 EXPOSE 9000
 ENTRYPOINT ["/entrypoint.sh"]

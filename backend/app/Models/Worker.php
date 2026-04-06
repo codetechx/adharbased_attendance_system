@@ -25,6 +25,7 @@ class Worker extends Model
         'state',
         'pin',
         'phone',
+        'mobile',
         'aadhaar_number_masked',   // last 4 digits only
         'aadhaar_pdf_path',        // encrypted path
         'aadhaar_data_extracted',  // json of extracted fields

@@ -87,7 +87,7 @@ The system integrates with UIDAI's official portal:
 4. Python PDF service extracts: name, DOB, gender, address, photo, PIN
 5. Form auto-fills; vendor reviews and saves
 
-**Password**: UIDAI PDFs use DOB as password (format: DDMMYYYY, e.g., 15081990)
+**Password**: UIDAI PDFs use first 4 letters of first name (uppercase) + birth year (format: XXXXYYYY, e.g., first name "Narendra" born 1955 → `NARE1955`)
 
 ## Fingerprint Integration (SecuGen)
 

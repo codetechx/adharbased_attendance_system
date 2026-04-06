@@ -8,7 +8,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./backend:/var/www/html:ro
+      - laravel_public:/var/www/html/public:ro
       - ./nginx/logs:/var/log/nginx
     depends_on:
       - backend
@@ -24,8 +24,8 @@ services:
       dockerfile: Dockerfile
     container_name: ams_backend
     volumes:
-      - ./backend:/var/www/html
       - ./backend/storage:/var/www/html/storage
+      - laravel_public:/var/www/html/public
     environment:
       - APP_NAME=${APP_NAME:-AMS}
       - APP_ENV=${APP_ENV:-local}
@@ -42,6 +42,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_secret}
+      - REDIS_CLIENT=predis
       - QUEUE_CONNECTION=redis
       - SESSION_DRIVER=redis
       - CACHE_STORE=redis
@@ -145,7 +146,7 @@ services:
     container_name: ams_queue
     entrypoint: ["/queue-entrypoint.sh"]
     volumes:
-      - ./backend:/var/www/html
+      - ./backend/storage:/var/www/html/storage
     environment:
       - APP_NAME=${APP_NAME:-AMS}
       - APP_ENV=${APP_ENV:-local}
@@ -161,6 +162,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_secret}
+      - REDIS_CLIENT=predis
       - QUEUE_CONNECTION=redis
       - CACHE_STORE=redis
       - CACHE_PREFIX=ams_
@@ -179,6 +181,8 @@ volumes:
   mysql_data:
     driver: local
   redis_data:
+    driver: local
+  laravel_public:
     driver: local
 
 networks:

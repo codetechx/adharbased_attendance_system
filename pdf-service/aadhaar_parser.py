@@ -26,6 +26,8 @@ class AadhaarParser:
     YEAR_PATTERN    = re.compile(r"Year of Birth[:\s]*(\d{4})", re.IGNORECASE)
     GENDER_PATTERN  = re.compile(r"\b(Male|Female|Transgender|MALE|FEMALE)\b")
     PIN_PATTERN     = re.compile(r"\b(\d{6})\b")
+    MOBILE_PATTERN  = re.compile(r"(?:Mobile|Mob|Phone|Contact)[:\s]*([6-9]\d{9})", re.IGNORECASE)
+    PO_PATTERN      = re.compile(r"\bPO[:\s]+([A-Za-z][A-Za-z\s\-\.]{1,40}?)(?=\s*,|\s*\n|\s*Dist|\s*PIN|\s*\d{6})", re.IGNORECASE)
 
     STATES = [
         "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
@@ -151,6 +153,7 @@ class AadhaarParser:
             "city":                  self._extract_city(text),
             "state":                 self._extract_state(text),
             "pin":                   self._extract_pin(text),
+            "mobile":                self._extract_mobile(text),
             "aadhaar_number_masked": self._extract_aadhaar_masked(text),
         }
 
@@ -221,16 +224,40 @@ class AadhaarParser:
         return None
 
     def _extract_city(self, text: str) -> str | None:
-        """Try to extract city from address context."""
-        # Aadhaar addresses often have: "House/Flat, Street, City, State - PIN"
-        pin_match = self.PIN_PATTERN.search(text)
+        """
+        Extract city from Aadhaar address.
+        PO (Post Office) label is the city equivalent in Indian addresses.
+        Falls back to inferring from the address segment before the PIN.
+        """
+        # 1. Explicit PO label — "PO: Sinnar" → city = "Sinnar"
+        po_match = self.PO_PATTERN.search(text)
+        if po_match:
+            return po_match.group(1).strip().title()
+
+        # 2. Fallback: segment just before the 6-digit PIN
+        pin_match = re.search(r"(?:PIN|Pin Code|Pincode|[\-\s])(\d{6})", text, re.IGNORECASE)
         if pin_match:
             before_pin = text[:pin_match.start()]
             parts = [p.strip() for p in re.split(r"[,\n]", before_pin) if p.strip()]
-            if len(parts) >= 2:
-                candidate = parts[-2]
-                if len(candidate) > 2 and candidate.replace(" ", "").isalpha():
+            for candidate in reversed(parts):
+                if any(s.lower() in candidate.lower() for s in self.STATES):
+                    continue
+                if len(candidate) > 2 and re.match(r"^[A-Za-z\s\-\.]+$", candidate):
                     return candidate.title()
+
+        return None
+
+    def _extract_mobile(self, text: str) -> str | None:
+        """Extract 10-digit Indian mobile number (starts with 6–9)."""
+        # 1. Try labelled mobile number
+        m = self.MOBILE_PATTERN.search(text)
+        if m:
+            return m.group(1)
+
+        # 2. Fallback: any standalone 10-digit number starting with 6-9
+        for match in re.finditer(r"\b([6-9]\d{9})\b", text):
+            return match.group(1)
+
         return None
 
     def _extract_state(self, text: str) -> str | None:

@@ -9,6 +9,7 @@ use App\Services\BiometricService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class WorkerController extends Controller
 {
@@ -34,23 +35,34 @@ class WorkerController extends Controller
         $user = $request->user();
 
         $data = $request->validate([
-            'name'                 => 'required|string|max:120',
-            'dob'                  => 'required|date|before:today',
-            'gender'               => 'required|in:M,F,O',
-            'address'              => 'required|string',
-            'city'                 => 'nullable|string',
-            'state'                => 'nullable|string',
-            'pin'                  => 'nullable|string|size:6',
-            'phone'                => 'nullable|string|max:15',
-            'aadhaar_number_masked' => 'nullable|string',
+            'name'                   => 'required|string|max:120',
+            'dob'                    => 'required|date|before:today',
+            'gender'                 => 'required|in:M,F,O',
+            'address'                => 'required|string',
+            'city'                   => 'nullable|string|max:100',
+            'state'                  => 'nullable|string|max:100',
+            'pin'                    => 'nullable|string|size:6',
+            'phone'                  => 'nullable|string|max:15',
+            'mobile'                 => 'nullable|string|max:15',
+            'aadhaar_number_masked'  => 'nullable|string',
             'aadhaar_data_extracted' => 'nullable|array',
-            'notes'                => 'nullable|string',
-            'vendor_id'            => 'nullable|integer|exists:vendors,id',
+            'notes'                  => 'nullable|string',
+            'vendor_id'              => [
+                Rule::requiredIf(! $user->isVendorUser()),
+                'nullable',
+                'integer',
+                'exists:vendors,id',
+            ],
         ]);
 
         // Vendor users can only register under their own vendor
         if ($user->isVendorUser()) {
             $data['vendor_id'] = $user->vendor_id;
+        }
+
+        // Guard: vendor_id must be resolved at this point
+        if (empty($data['vendor_id'])) {
+            return response()->json(['message' => 'vendor_id is required.'], 422);
         }
 
         $data['registered_by'] = $user->id;

@@ -63,7 +63,7 @@ export default function AadhaarFlow({ onExtracted, onSkip }) {
 
       if (code === "PDF_OPEN_FAILED" || message?.toLowerCase().includes("password")) {
         setNeedsPass(true);
-        setError("This PDF is password protected. Enter the PDF password (usually your date of birth in DDMMYYYY format).");
+        setError("This PDF is password protected. Enter the PDF password (first 4 letters of first name + birth year, e.g., NARE1955).");
       } else {
         setError(message || "Could not extract data from the PDF. Please check the file and try again.");
       }
@@ -171,7 +171,7 @@ export default function AadhaarFlow({ onExtracted, onSkip }) {
               <p className="text-sm font-medium text-amber-800">PDF Password (if required)</p>
               <p className="text-xs text-amber-600 mt-0.5">
                 UIDAI Aadhaar PDFs are often password protected.
-                The password is usually your <strong>Date of Birth in DDMMYYYY format</strong> (e.g., 15081990).
+                The password is <strong>first 4 letters of first name (uppercase) + birth year</strong> (e.g., Narendra born 1955 → <code>NARE1955</code>).
               </p>
             </div>
           </div>
@@ -180,7 +180,7 @@ export default function AadhaarFlow({ onExtracted, onSkip }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="input bg-white"
-            placeholder="Enter PDF password (e.g., 15081990)"
+            placeholder="Enter PDF password (e.g., NARE1955)"
           />
         </div>
       )}

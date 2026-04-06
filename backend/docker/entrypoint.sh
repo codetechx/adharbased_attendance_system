@@ -51,16 +51,25 @@ until php -r "
 done
 echo "[AMS] MySQL is ready."
 
-# ── 3. Run migrations (safe — skips already-run migrations) ───────────────────
+# ── 3. Ensure required directories exist and are writable ─────────────────────
+mkdir -p /var/www/html/bootstrap/cache
+mkdir -p /var/www/html/storage/app/public
+mkdir -p /var/www/html/storage/framework/cache/data
+mkdir -p /var/www/html/storage/framework/sessions
+mkdir -p /var/www/html/storage/framework/views
+mkdir -p /var/www/html/storage/logs
+chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+
+# ── 4. Run migrations (safe — skips already-run migrations) ───────────────────
 echo "[AMS] Running migrations..."
 php artisan migrate --seed --force
 echo "[AMS] Migrations done."
 
-# ── 4. Storage symlink ────────────────────────────────────────────────────────
+# ── 5. Storage symlink ────────────────────────────────────────────────────────
 echo "[AMS] Creating storage symlink..."
 php artisan storage:link --force 2>/dev/null || true
 
-# ── 5. Config cache ───────────────────────────────────────────────────────────
+# ── 6. Config cache ───────────────────────────────────────────────────────────
 echo "[AMS] Caching config..."
 php artisan config:cache 2>/dev/null || true
 
@@ -69,5 +78,5 @@ echo "  AMS Backend Ready"
 echo "========================================"
 echo ""
 
-# ── 6. Start PHP-FPM ─────────────────────────────────────────────────────────
+# ── 7. Start PHP-FPM ─────────────────────────────────────────────────────────
 exec php-fpm
