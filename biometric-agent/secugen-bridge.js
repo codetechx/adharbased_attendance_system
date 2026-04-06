@@ -35,6 +35,8 @@
 "use strict";
 
 const koffi = require("koffi");
+const path  = require("path");
+const fs    = require("fs");
 
 // ─── Device constants (from SGFPLIB.h) ───────────────────────────────────────
 const SG_DEV_AUTO   = 0;   // auto-detect
@@ -75,12 +77,74 @@ const ERR = {
 const errName = (code) => ERR[code] ?? `UNKNOWN_ERROR_${code}`;
 
 // ─── Load DLL and bind functions ──────────────────────────────────────────────
-let fn_Create, fn_Destroy, fn_Init, fn_OpenDevice, fn_CloseDevice;
+let fn_Create, fn_Init, fn_OpenDevice, fn_CloseDevice;
 let fn_GetImageEx, fn_GetImageQuality, fn_CreateTemplate, fn_MatchTemplate;
 let fn_GetDeviceInfo;
 
+// SDK installs sgfplib.dll into its own folder, not System32.
+// Use forward slashes — koffi requires them on Windows.
+const DLL_PATHS = [
+  "C:/Program Files/SecuGen/SgiBioSrv/sgfplib.dll",          // SDK default install path
+  "SGFPLIB.dll",                                              // System32 (if user copied it)
+  "C:/Windows/System32/SGFPLIB.dll",
+  "C:/Windows/SysWOW64/SGFPLIB.dll",
+];
+
+// Known locations for per-device driver DLLs and model/license files.
+// SGFPM_Init tries to LoadLibrary the device-specific driver at runtime;
+// that DLL in turn looks for its .dat model file alongside itself.
+// Adding these dirs to PATH before loading ensures Windows finds them.
+const SDK_EXTRA_DIRS = [
+  "C:\\Program Files\\SecuGen\\SgiBioSrv",
+  "C:\\Program Files\\SecuGen\\Drivers\\HU20A",   // sgfdu08x64.dll + *.dat + *.lic
+  "C:\\Program Files\\SecuGen\\Drivers\\HU20",
+];
+
+// Prepend SDK dirs to PATH so dependent DLLs are found at load time.
+// Must run BEFORE koffi.load so that Windows DLL loader already has the path.
+(function primeSearchPath() {
+  const cur = process.env.PATH || "";
+  const toAdd = SDK_EXTRA_DIRS.filter(d => !cur.includes(d)).reverse();
+  if (toAdd.length) process.env.PATH = toAdd.join(";") + ";" + cur;
+})();
+
+// Track which path was successfully loaded so we can chdir to its folder
+let loadedDllDir = null;
+
+function loadSgLib() {
+  for (const p of DLL_PATHS) {
+    try {
+      const abs = path.resolve(p.replace(/\//g, path.sep));
+      if (fs.existsSync(abs)) {
+        // Chdir to the DLL's folder so the SDK finds its data files via
+        // relative paths (e.g. "sgfpamx.dll", "sgfdu08mlp.dat").
+        loadedDllDir = path.dirname(abs);
+        const origCwd = process.cwd();
+        process.chdir(loadedDllDir);
+        try {
+          const lib = koffi.load(abs);
+          console.log(`[SecuGen] Loaded DLL from: ${abs} (CWD=${loadedDllDir})`);
+          return lib;
+        } finally {
+          process.chdir(origCwd); // restore immediately; chdir again in initDevice
+        }
+      }
+    } catch {}
+  }
+  // Last-ditch: try bare name (must be on PATH/System32)
+  for (const p of ["SGFPLIB.dll", "C:/Windows/System32/SGFPLIB.dll"]) {
+    try {
+      const lib = koffi.load(p);
+      loadedDllDir = null;
+      console.log(`[SecuGen] Loaded DLL (system): ${p}`);
+      return lib;
+    } catch {}
+  }
+  throw new Error("sgfplib.dll not found in any known location: " + DLL_PATHS.join(", "));
+}
+
 try {
-  const lib = koffi.load("SGFPLIB.dll");
+  const lib = loadSgLib();
 
   // ── Structs ────────────────────────────────────────────────────────────────
 
@@ -114,10 +178,8 @@ try {
   // koffi uses __cdecl by default, so no calling convention override needed.
 
   // DWORD SGFPM_Create(HSGFPM **phFPM)
-  fn_Create = lib.func("SGFPM_Create", "uint32", ["void **"]);
-
-  // DWORD SGFPM_Destroy(HSGFPM *hFPM)
-  fn_Destroy = lib.func("SGFPM_Destroy", "uint32", ["void *"]);
+  // Must use koffi.out(koffi.pointer(...)) — bare "void **" returns a null handle.
+  fn_Create = lib.func("SGFPM_Create", "uint32", [koffi.out(koffi.pointer("void *"))]);
 
   // DWORD SGFPM_Init(HSGFPM *hFPM, DWORD dwDevName)
   fn_Init = lib.func("SGFPM_Init", "uint32", ["void *", "uint32"]);
@@ -188,12 +250,35 @@ function initDevice() {
   if (rc !== 0) throw new Error(`SGFPM_Create failed: ${errName(rc)} (${rc})`);
   hFPM = pHandle[0];
 
-  // SGFPM_Init: tell the SDK which device type to expect
-  rc = fn_Init(hFPM, SG_DEV_FDU08P);
-  if (rc !== 0) {
-    console.warn(`[SecuGen] FDU08P init failed (${rc}), trying auto-detect...`);
-    rc = fn_Init(hFPM, SG_DEV_AUTO);
-    if (rc !== 0) throw new Error(`SGFPM_Init failed: ${errName(rc)} (${rc})`);
+  // ── SGFPM_Init needs the SDK data files (sgfpamx.dat, licence) ──────────
+  // These live in the same directory as sgfplib.dll.
+  // The SDK looks for them relative to the current working directory or its
+  // install dir. We chdir to the DLL folder to guarantee it can find them.
+  const origCwd = process.cwd();
+  if (loadedDllDir) {
+    try { process.chdir(loadedDllDir); } catch {}
+    // Also add SDK and driver dirs to PATH so any further DLL loads succeed
+    const driverDir = "C:\\Program Files\\SecuGen\\Drivers\\HU20A";
+    const sdkDir    = loadedDllDir;
+    for (const d of [driverDir, sdkDir]) {
+      if (process.env.PATH && !process.env.PATH.includes(d)) {
+        process.env.PATH = d + ";" + process.env.PATH;
+      }
+    }
+    console.log(`[SecuGen] CWD set to SDK dir: ${loadedDllDir}`);
+  }
+
+  try {
+    // SGFPM_Init: tell the SDK which device type to expect
+    rc = fn_Init(hFPM, SG_DEV_FDU08P);
+    if (rc !== 0) {
+      console.warn(`[SecuGen] FDU08P init failed (${errName(rc)}), trying auto-detect...`);
+      rc = fn_Init(hFPM, SG_DEV_AUTO);
+      if (rc !== 0) throw new Error(`SGFPM_Init failed: ${errName(rc)} (${rc})`);
+    }
+  } finally {
+    // Restore original CWD regardless of success or failure
+    try { process.chdir(origCwd); } catch {}
   }
 
   // SGFPM_OpenDevice: open first connected device (index 0)
@@ -346,7 +431,7 @@ function getVersion() {
 process.on("exit", () => {
   if (hFPM) {
     try { fn_CloseDevice(hFPM); } catch {}
-    try { fn_Destroy(hFPM); } catch {}
+    // SGFPM_Destroy is not exported by this SDK version — CloseDevice is sufficient
   }
 });
 

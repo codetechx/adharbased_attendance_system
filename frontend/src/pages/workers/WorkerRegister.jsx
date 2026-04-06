@@ -1,26 +1,28 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/axios";
 import toast from "react-hot-toast";
 import AadhaarFlow from "@/components/AadhaarFlow";
 import FingerprintCapture from "@/components/FingerprintCapture";
+import { useAuth } from "@/contexts/AuthContext";
 import {
-  CheckCircle, Circle, ChevronRight, User, FileText, Fingerprint, Save
+  CheckCircle, ChevronRight, User, FileText, Fingerprint, Save
 } from "lucide-react";
 
 const schema = z.object({
-  name:    z.string().min(2, "Name is required"),
-  dob:     z.string().min(1, "Date of birth is required"),
-  gender:  z.enum(["M", "F", "O"], { required_error: "Gender is required" }),
-  address: z.string().min(5, "Address is required"),
-  city:    z.string().optional(),
-  state:   z.string().optional(),
-  pin:     z.string().regex(/^\d{6}$/, "Enter valid 6-digit PIN").optional().or(z.literal("")),
-  phone:   z.string().optional(),
+  vendor_id: z.coerce.number().min(1, "Please select a vendor").optional().or(z.literal("")),
+  name:      z.string().min(2, "Name is required"),
+  dob:       z.string().min(1, "Date of birth is required"),
+  gender:    z.enum(["M", "F", "O"], { required_error: "Gender is required" }),
+  address:   z.string().min(5, "Address is required"),
+  city:      z.string().optional(),
+  state:     z.string().optional(),
+  pin:       z.string().regex(/^\d{6}$/, "Enter valid 6-digit PIN").optional().or(z.literal("")),
+  phone:     z.string().optional(),
 });
 
 const STEPS = [
@@ -33,6 +35,8 @@ const STEPS = [
 export default function WorkerRegister() {
   const navigate     = useNavigate();
   const queryClient  = useQueryClient();
+  const { user }     = useAuth();
+  const needsVendor  = ["super_admin", "company_admin"].includes(user?.role);
   const [step, setStep]           = useState(0); // 0=aadhaar, 1=details, 2=fingerprint, 3=confirm
   const [aadhaarData, setAadhaar] = useState(null);
   const [aadhaarPdf, setAadhaarPdf] = useState(null);
@@ -43,19 +47,26 @@ export default function WorkerRegister() {
     resolver: zodResolver(schema),
   });
 
+  const { data: vendors } = useQuery({
+    queryKey: ["vendors-list"],
+    queryFn: () => api.get("/vendors?per_page=100").then(r => r.data?.data ?? r.data),
+    enabled: needsVendor,
+  });
+
   // ─── Aadhaar extracted ──────────────────────────────────────────────────────
   const handleAadhaarExtracted = (data, file) => {
     setAadhaar(data);
     setAadhaarPdf(file);
 
     // Auto-fill form from extracted data
-    if (data.name)    setValue("name", data.name);
-    if (data.dob)     setValue("dob", data.dob);
-    if (data.gender)  setValue("gender", data.gender);
-    if (data.address) setValue("address", data.address);
-    if (data.city)    setValue("city", data.city ?? "");
-    if (data.state)   setValue("state", data.state ?? "");
-    if (data.pin)     setValue("pin", data.pin ?? "");
+    if (data.name)              setValue("name", data.name);
+    if (data.dob)               setValue("dob", data.dob);
+    if (data.gender)            setValue("gender", data.gender);
+    if (data.address)           setValue("address", data.address);
+    if (data.city)              setValue("city", data.city ?? "");
+    if (data.state)             setValue("state", data.state ?? "");
+    if (data.pin)               setValue("pin", data.pin ?? "");
+    if (data.mobile || data.phone) setValue("phone", data.mobile ?? data.phone ?? "");
 
     setStep(1);
     toast.success("Aadhaar data extracted and auto-filled. Please review before saving.");
@@ -66,6 +77,8 @@ export default function WorkerRegister() {
     mutationFn: async (data) => {
       const payload = {
         ...data,
+        // coerce empty string to undefined so backend doesn't get ""
+        vendor_id: data.vendor_id ? Number(data.vendor_id) : undefined,
         aadhaar_number_masked:  aadhaarData?.aadhaar_number_masked,
         aadhaar_data_extracted: aadhaarData,
       };
@@ -191,6 +204,19 @@ export default function WorkerRegister() {
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {needsVendor && (
+                <div className="sm:col-span-2">
+                  <label className="label">Vendor *</label>
+                  <select {...register("vendor_id")} className={`input ${errors.vendor_id ? "input-error" : ""}`}>
+                    <option value="">— Select Vendor —</option>
+                    {(vendors ?? []).map(v => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
+                  </select>
+                  {errors.vendor_id && <p className="text-red-500 text-xs mt-1">{errors.vendor_id.message}</p>}
+                </div>
+              )}
+
               <div className="sm:col-span-2">
                 <label className="label">Full Name *</label>
                 <input {...register("name")} className={`input ${errors.name ? "input-error" : ""}`} placeholder="As on Aadhaar" />

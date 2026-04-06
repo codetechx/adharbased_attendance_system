@@ -26,7 +26,7 @@ class AadhaarParser:
     YEAR_PATTERN    = re.compile(r"Year of Birth[:\s]*(\d{4})", re.IGNORECASE)
     GENDER_PATTERN  = re.compile(r"\b(Male|Female|Transgender|MALE|FEMALE)\b")
     PIN_PATTERN     = re.compile(r"\b(\d{6})\b")
-    MOBILE_PATTERN  = re.compile(r"(?:Mobile|Mob|Phone|Contact)[:\s]*([6-9]\d{9})", re.IGNORECASE)
+    MOBILE_PATTERN  = re.compile(r"(?:Mobile(?:\s*No\.?)?|Mob(?:\s*No\.?)?|Phone(?:\s*No\.?)?|Contact(?:\s*No\.?)?)[:\s]*([6-9][\d\s]{9,11})", re.IGNORECASE)
     PO_PATTERN      = re.compile(r"\bPO[:\s]+([A-Za-z][A-Za-z\s\-\.]{1,40}?)(?=\s*,|\s*\n|\s*Dist|\s*PIN|\s*\d{6})", re.IGNORECASE)
 
     STATES = [
@@ -249,13 +249,23 @@ class AadhaarParser:
 
     def _extract_mobile(self, text: str) -> str | None:
         """Extract 10-digit Indian mobile number (starts with 6–9)."""
-        # 1. Try labelled mobile number
+        # 1. Try labelled mobile number (handles spaces within number)
         m = self.MOBILE_PATTERN.search(text)
         if m:
-            return m.group(1)
+            digits = re.sub(r"\s+", "", m.group(1))
+            if len(digits) == 10:
+                return digits
 
         # 2. Fallback: any standalone 10-digit number starting with 6-9
+        #    Skip Aadhaar-like 12-digit sequences
         for match in re.finditer(r"\b([6-9]\d{9})\b", text):
+            # Make sure it's not part of a 12-digit Aadhaar number
+            start = match.start()
+            if start > 0 and text[start - 1].isdigit():
+                continue
+            end = match.end()
+            if end < len(text) and text[end].isdigit():
+                continue
             return match.group(1)
 
         return None
