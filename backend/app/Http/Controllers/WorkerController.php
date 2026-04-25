@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Worker;
 use App\Models\User;
 use App\Services\AuditService;
-use App\Services\BiometricService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -15,7 +14,6 @@ class WorkerController extends Controller
 {
     public function __construct(
         private AuditService $audit,
-        private BiometricService $biometric,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -23,6 +21,13 @@ class WorkerController extends Controller
         $user = $request->user();
         $query = Worker::with(['vendor:id,name'])
             ->when($user->isVendorUser(), fn($q) => $q->where('vendor_id', $user->vendor_id))
+            ->when($user->isCompanyUser(), function ($q) use ($user) {
+                $approvedVendorIds = \DB::table('company_vendors')
+                    ->where('company_id', $user->company_id)
+                    ->where('status', 'approved')
+                    ->pluck('vendor_id');
+                $q->whereIn('vendor_id', $approvedVendorIds);
+            })
             ->when($request->status, fn($q, $s) => $q->where('status', $s))
             ->when($request->search, fn($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->orderByDesc('created_at');
@@ -204,7 +209,9 @@ class WorkerController extends Controller
 
     private function authorizeWorkerAccess(User $user, Worker $worker): void
     {
-        if ($user->isSuperAdmin()) return;
+        if ($user->isSuperAdmin()) {
+            return;
+        }
 
         if ($user->isVendorUser() && $worker->vendor_id !== $user->vendor_id) {
             abort(403, 'Access denied to this worker.');

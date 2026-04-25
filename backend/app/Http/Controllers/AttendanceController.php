@@ -69,13 +69,27 @@ class AttendanceController extends Controller
         $matched       = null;
         $bestScore     = 0;
 
-        foreach ($assignments as $assignment) {
-            $storedTemplate = decrypt($assignment->worker->fingerprint_template);
-            $result = $this->biometric->matchTemplates($probeTemplate, $storedTemplate);
+        // WBF mode: probe_template is a GUID returned by WinBioIdentify.
+        // WBF matched internally; we just look up which worker owns that GUID.
+        $isGuid = (bool) preg_match('/^\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}$/i', $probeTemplate);
 
-            if ($result['matched'] && $result['score'] > $bestScore) {
-                $bestScore = $result['score'];
-                $matched   = ['assignment' => $assignment, 'score' => $result['score']];
+        if ($isGuid) {
+            foreach ($assignments as $assignment) {
+                $stored = $assignment->worker->fingerprint_template;
+                if ($stored && decrypt($stored) === $probeTemplate) {
+                    $matched   = ['assignment' => $assignment, 'score' => 100];
+                    break;
+                }
+            }
+        } else {
+            foreach ($assignments as $assignment) {
+                $storedTemplate = decrypt($assignment->worker->fingerprint_template);
+                $result = $this->biometric->matchTemplates($probeTemplate, $storedTemplate);
+
+                if ($result['matched'] && $result['score'] > $bestScore) {
+                    $bestScore = $result['score'];
+                    $matched   = ['assignment' => $assignment, 'score' => $result['score']];
+                }
             }
         }
 
@@ -121,6 +135,61 @@ class AttendanceController extends Controller
         ]);
     }
 
+    // ─── Worker templates for frontend 1:N matching (SGIBIOSRV) ─────────────────
+
+    public function workerTemplates(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $companyId = $request->input('company_id') ?? $user->company_id;
+
+        if (!$companyId) {
+            return response()->json(['message' => 'company_id is required.'], 422);
+        }
+
+        if ($user->isCompanyUser() && $user->company_id !== (int)$companyId) {
+            return response()->json(['message' => 'Unauthorized company.'], 403);
+        }
+
+        // All active workers from vendors approved for this company
+        $approvedVendorIds = \DB::table('company_vendors')
+            ->where('company_id', $companyId)
+            ->where('status', 'approved')
+            ->pluck('vendor_id');
+
+        $workers = Worker::with('vendor')
+            ->whereIn('vendor_id', $approvedVendorIds)
+            ->whereNotNull('fingerprint_template')
+            ->where('status', Worker::STATUS_ACTIVE)
+            ->get();
+
+        $result = $workers->map(function ($worker) use ($companyId) {
+            $lastLog = AttendanceLog::where('worker_id', $worker->id)
+                ->where('company_id', $companyId)
+                ->today()
+                ->valid()
+                ->orderByDesc('marked_at')
+                ->first();
+
+            $pendingType = ($lastLog?->type === AttendanceLog::TYPE_IN)
+                ? AttendanceLog::TYPE_OUT
+                : AttendanceLog::TYPE_IN;
+
+            return [
+                'worker_id'              => $worker->id,
+                'name'                   => $worker->name,
+                'photo_url'              => $worker->photo_url,
+                'aadhaar_number_masked'  => $worker->aadhaar_number_masked,
+                'vendor'                 => $worker->vendor?->name,
+                'assignment_id'          => null,
+                'pending_type'           => $pendingType,
+                'template'               => decrypt($worker->fingerprint_template),
+            ];
+        });
+
+        return response()->json($result);
+    }
+
     // ─── Mark attendance (after fingerprint verification) ────────────────────
 
     public function mark(Request $request): JsonResponse
@@ -128,9 +197,9 @@ class AttendanceController extends Controller
         $data = $request->validate([
             'worker_id'          => 'required|integer|exists:workers,id',
             'company_id'         => 'required|integer|exists:companies,id',
-            'assignment_id'      => 'required|integer|exists:worker_assignments,id',
+            'assignment_id'      => 'nullable|integer|exists:worker_assignments,id',
             'type'               => 'required|in:IN,OUT',
-            'fingerprint_score'  => 'required|integer|min:0|max:100',
+            'fingerprint_score'  => 'required|integer|min:0|max:200',
             'gate'               => 'nullable|string',
             'device_id'          => 'nullable|string',
         ]);
@@ -151,7 +220,7 @@ class AttendanceController extends Controller
         $log = AttendanceLog::create([
             'worker_id'         => $data['worker_id'],
             'company_id'        => $data['company_id'],
-            'assignment_id'     => $data['assignment_id'],
+            'assignment_id'     => $data['assignment_id'] ?? null,
             'type'              => $data['type'],
             'marked_at'         => now(),
             'marked_by'         => $user->id,

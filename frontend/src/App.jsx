@@ -6,12 +6,15 @@ import Dashboard from "@/pages/Dashboard";
 import CompanyList from "@/pages/companies/CompanyList";
 import VendorList from "@/pages/vendors/VendorList";
 import VendorApproval from "@/pages/vendors/VendorApproval";
+import VendorCompanyAccess from "@/pages/vendors/VendorCompanyAccess";
 import WorkerList from "@/pages/workers/WorkerList";
 import WorkerRegister from "@/pages/workers/WorkerRegister";
 import WorkerAssign from "@/pages/workers/WorkerAssign";
 import AttendanceMark from "@/pages/attendance/AttendanceMark";
 import AttendanceList from "@/pages/attendance/AttendanceList";
 import AttendanceExceptions from "@/pages/attendance/AttendanceExceptions";
+import FingerprintTest from "@/pages/diagnostic/FingerprintTest";
+import UserList from "@/pages/users/UserList";
 
 function PrivateRoute({ children, roles }) {
   const { user, loading } = useAuth();
@@ -39,11 +42,23 @@ export default function App() {
           </PrivateRoute>
         } />
 
+        {/* Users — super admin (all users) and company admin (gate users only) */}
+        <Route path="users" element={
+          <PrivateRoute roles={["super_admin", "company_admin"]}>
+            <UserList />
+          </PrivateRoute>
+        } />
+
         {/* Vendors */}
         <Route path="vendors" element={<VendorList />} />
         <Route path="vendors/approval" element={
           <PrivateRoute roles={["super_admin", "company_admin"]}>
             <VendorApproval />
+          </PrivateRoute>
+        } />
+        <Route path="vendors/company-access" element={
+          <PrivateRoute roles={["vendor_admin", "vendor_operator"]}>
+            <VendorCompanyAccess />
           </PrivateRoute>
         } />
 
@@ -73,6 +88,11 @@ export default function App() {
           </PrivateRoute>
         } />
         <Route path="attendance/exceptions" element={<AttendanceExceptions />} />
+        <Route path="diagnostic/fingerprint" element={
+          <PrivateRoute roles={["super_admin", "company_admin", "vendor_admin"]}>
+            <FingerprintTest />
+          </PrivateRoute>
+        } />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" />} />

@@ -26,8 +26,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/today-attendance', [DashboardController::class, 'todayAttendance']);
     Route::get('/dashboard/recent-activity', [DashboardController::class, 'recentActivity']);
 
-    // ── Users (Super Admin only) ──────────────────────────────────────────────
-    Route::middleware('role:super_admin')->group(function () {
+    // ── Users (Super Admin: all users; Company Admin: their gate users only) ──
+    Route::middleware('role:super_admin,company_admin')->group(function () {
         Route::apiResource('users', UserController::class);
     });
 
@@ -48,6 +48,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Vendor requests access to a company
     Route::post('vendors/{vendor}/request-company/{company}', [VendorController::class, 'requestCompany']);
     Route::get('vendors/{vendor}/companies', [VendorController::class, 'myCompanies']);
+    Route::get('vendors/{vendor}/available-companies', [VendorController::class, 'availableCompanies']);
 
     // ── Workers ───────────────────────────────────────────────────────────────
     Route::apiResource('workers', WorkerController::class);
@@ -76,8 +77,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // ── Attendance ────────────────────────────────────────────────────────────
     Route::prefix('attendance')->group(function () {
         Route::get('/', [AttendanceController::class, 'index']);
-        Route::post('verify', [AttendanceController::class, 'verifyFingerprint']); // fingerprint verify
-        Route::post('mark', [AttendanceController::class, 'mark']);                // mark IN/OUT
+        Route::post('verify', [AttendanceController::class, 'verifyFingerprint']);
+        Route::get('worker-templates', [AttendanceController::class, 'workerTemplates']); // for SGIBIOSRV 1:N matching
+        Route::post('mark', [AttendanceController::class, 'mark']);
         Route::post('manual', [AttendanceController::class, 'manualMark']);        // manual override
         Route::get('today', [AttendanceController::class, 'today']);
         Route::get('worker/{worker}', [AttendanceController::class, 'workerHistory']);

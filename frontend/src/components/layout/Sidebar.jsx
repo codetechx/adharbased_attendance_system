@@ -2,7 +2,7 @@ import { NavLink } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard, Building2, Users, UserCheck, ClipboardList,
-  Fingerprint, BarChart2, AlertTriangle, ShieldCheck, X
+  Fingerprint, BarChart2, AlertTriangle, ShieldCheck, X, FlaskConical, UserCog,
 } from "lucide-react";
 
 const NAV = [
@@ -16,8 +16,11 @@ const NAV = [
     label: "Administration",
     items: [
       { to: "/companies", icon: Building2,  label: "Companies", roles: ["super_admin"] },
+      { to: "/users",     icon: UserCog,    label: "Users",     roles: ["super_admin"] },
+      { to: "/users",     icon: UserCog,    label: "Gate Users", roles: ["company_admin"] },
       { to: "/vendors",   icon: Users,      label: "Vendors",   roles: ["super_admin", "company_admin", "company_gate", "vendor_admin", "vendor_operator"] },
       { to: "/vendors/approval", icon: ShieldCheck, label: "Vendor Approvals", roles: ["super_admin", "company_admin"] },
+      { to: "/vendors/company-access", icon: Building2, label: "Company Access", roles: ["vendor_admin", "vendor_operator"] },
     ],
   },
   {
@@ -32,8 +35,14 @@ const NAV = [
     label: "Attendance",
     items: [
       { to: "/attendance",            icon: BarChart2,    label: "Attendance Log",  roles: ["all"] },
-      { to: "/attendance/mark",       icon: Fingerprint,  label: "Mark Attendance", roles: ["super_admin", "company_admin", "company_gate"] },
-      { to: "/attendance/exceptions", icon: AlertTriangle, label: "Exceptions",     roles: ["super_admin", "company_admin", "vendor_admin"] },
+      { to: "/attendance/mark",       icon: Fingerprint,   label: "Mark Attendance", roles: ["super_admin", "company_admin", "company_gate"] },
+      { to: "/attendance/exceptions", icon: AlertTriangle, label: "Exceptions",      roles: ["super_admin", "company_admin", "vendor_admin"] },
+    ],
+  },
+  {
+    label: "Diagnostics",
+    items: [
+      { to: "/diagnostic/fingerprint", icon: FlaskConical, label: "Fingerprint Test", roles: ["super_admin", "company_admin", "vendor_admin"] },
     ],
   },
 ];

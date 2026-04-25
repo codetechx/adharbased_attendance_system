@@ -17,6 +17,10 @@ class VendorController extends Controller
         $user  = $request->user();
         $query = Vendor::query()
             ->when(! $user->isSuperAdmin() && $user->isVendorUser(), fn($q) => $q->where('id', $user->vendor_id))
+            ->when($user->isCompanyUser(), fn($q) => $q->whereHas('companies', function ($cq) use ($user) {
+                $cq->where('company_vendors.company_id', $user->company_id)
+                   ->where('company_vendors.status', 'approved');
+            }))
             ->when($request->search, fn($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->when($request->status, fn($q, $s) => $q->where('status', $s));
 
@@ -135,5 +139,40 @@ class VendorController extends Controller
             ->get();
 
         return response()->json($companies);
+    }
+
+    // ── All companies with this vendor's request status ────────────────────────
+
+    public function availableCompanies(Request $request, Vendor $vendor): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user->isSuperAdmin() && ! ($user->isVendorUser() && $user->vendor_id === $vendor->id)) {
+            abort(403);
+        }
+
+        $existing = $vendor->companies()
+            ->withPivot(['status', 'approved_at', 'rejection_reason'])
+            ->get()
+            ->keyBy('id');
+
+        $allCompanies = Company::where('status', 'active')->orderBy('name')->get();
+
+        $data = $allCompanies->map(function ($company) use ($existing) {
+            $rel = $existing->get($company->id);
+            return [
+                'id'               => $company->id,
+                'name'             => $company->name,
+                'code'             => $company->code,
+                'city'             => $company->city,
+                'state'            => $company->state,
+                'contact_person'   => $company->contact_person,
+                'request_status'   => $rel?->pivot->status,
+                'approved_at'      => $rel?->pivot->approved_at,
+                'rejection_reason' => $rel?->pivot->rejection_reason,
+            ];
+        });
+
+        return response()->json($data);
     }
 }

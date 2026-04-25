@@ -3,146 +3,213 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/lib/axios";
 import toast from "react-hot-toast";
-import { CheckCircle, XCircle, Clock, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, Clock, AlertTriangle, PauseCircle, PlayCircle } from "lucide-react";
+
+function StatusBadge({ status }) {
+  const map = {
+    pending:   <span className="badge badge-yellow flex items-center gap-1"><Clock size={10} />Pending</span>,
+    approved:  <span className="badge badge-green flex items-center gap-1"><CheckCircle size={10} />Approved</span>,
+    rejected:  <span className="badge badge-red flex items-center gap-1"><XCircle size={10} />Rejected</span>,
+    suspended: <span className="badge badge-gray flex items-center gap-1"><PauseCircle size={10} />Suspended</span>,
+  };
+  return map[status] ?? <span className="badge badge-gray">{status}</span>;
+}
+
+function VendorRow({ vendor, companyId, onRefresh }) {
+  const [rejectText, setRejectText] = useState("");
+  const [showReject, setShowReject] = useState(false);
+
+  const status = vendor.pivot?.status;
+
+  const act = (path, body) =>
+    api.post(`/companies/${companyId}/vendors/${vendor.id}/${path}`, body ?? {})
+      .then(() => { toast.success("Done."); onRefresh(); })
+      .catch((e) => toast.error(e.response?.data?.message ?? "Error"));
+
+  return (
+    <div className={`rounded-xl border p-4 space-y-3 ${
+      status === "pending"   ? "border-yellow-200 bg-yellow-50" :
+      status === "approved"  ? "border-green-100 bg-green-50"  :
+      status === "suspended" ? "border-gray-200 bg-gray-50"    :
+      "border-red-100 bg-red-50"
+    }`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-gray-900">{vendor.name}
+            <span className="text-xs font-mono text-gray-400 ml-2">{vendor.code}</span>
+          </p>
+          <p className="text-sm text-gray-500">{vendor.contact_person} · {vendor.contact_email}</p>
+          <p className="text-xs text-gray-400">{[vendor.city, vendor.state].filter(Boolean).join(", ")}</p>
+        </div>
+        <StatusBadge status={status} />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {status === "pending" && (
+          <>
+            <button onClick={() => act("approve")} className="btn-success text-sm">
+              <CheckCircle size={14} /> Approve
+            </button>
+            <button onClick={() => setShowReject(s => !s)} className="btn-danger text-sm">
+              <XCircle size={14} /> Reject
+            </button>
+          </>
+        )}
+        {status === "approved" && (
+          <button onClick={() => act("suspend")} className="btn-secondary text-sm text-amber-600 border-amber-200">
+            <PauseCircle size={14} /> Suspend
+          </button>
+        )}
+        {(status === "rejected" || status === "suspended") && (
+          <button onClick={() => act("approve")} className="btn-success text-sm">
+            <PlayCircle size={14} /> Re-approve
+          </button>
+        )}
+      </div>
+
+      {showReject && (
+        <div className="flex gap-2">
+          <input
+            className="input text-sm flex-1"
+            placeholder="Reason for rejection…"
+            value={rejectText}
+            onChange={e => setRejectText(e.target.value)}
+          />
+          <button
+            className="btn-danger text-sm"
+            onClick={() => {
+              if (!rejectText.trim()) { toast.error("Enter a reason."); return; }
+              act("reject", { reason: rejectText }).then(() => { setShowReject(false); setRejectText(""); });
+            }}
+          >
+            Confirm
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function VendorApproval() {
   const { user }    = useAuth();
   const queryClient = useQueryClient();
-  const [reason, setReason] = useState({});
+  const [filter, setFilter] = useState("pending");
 
-  const companyId = user?.company_id;
+  // Super admin picks a company; company_admin uses their own
+  const [selectedCompanyId, setSelectedCompanyId] = useState(user?.company_id ?? null);
+  const companyId = user?.isSuperAdmin ? selectedCompanyId : user?.company_id;
 
-  const { data: vendors, isLoading } = useQuery({
+  const { data: companies } = useQuery({
+    queryKey: ["companies-list"],
+    queryFn:  () => api.get("/companies").then(r => r.data?.data ?? r.data),
+    enabled:  user?.role === "super_admin",
+  });
+
+  const { data: vendors, isLoading, refetch } = useQuery({
     queryKey: ["company-vendors", companyId],
-    queryFn:  () => api.get(`/companies/${companyId}/vendors`).then((r) => r.data),
+    queryFn:  () => api.get(`/companies/${companyId}/vendors`).then(r => r.data),
     enabled:  !!companyId,
   });
 
-  const approve = useMutation({
-    mutationFn: (vendorId) => api.post(`/companies/${companyId}/vendors/${vendorId}/approve`),
-    onSuccess: () => {
-      toast.success("Vendor approved!");
-      queryClient.invalidateQueries(["company-vendors"]);
-    },
-  });
+  const filtered = (vendors ?? []).filter(v =>
+    filter === "all" ? true : v.pivot?.status === filter
+  );
 
-  const reject = useMutation({
-    mutationFn: ({ vendorId, reason: r }) =>
-      api.post(`/companies/${companyId}/vendors/${vendorId}/reject`, { reason: r }),
-    onSuccess: () => {
-      toast.success("Vendor rejected.");
-      queryClient.invalidateQueries(["company-vendors"]);
-    },
-  });
+  const counts = {
+    pending:   (vendors ?? []).filter(v => v.pivot?.status === "pending").length,
+    approved:  (vendors ?? []).filter(v => v.pivot?.status === "approved").length,
+    rejected:  (vendors ?? []).filter(v => v.pivot?.status === "rejected").length,
+    suspended: (vendors ?? []).filter(v => v.pivot?.status === "suspended").length,
+  };
 
-  const pending   = vendors?.filter((v) => v.pivot?.status === "pending") ?? [];
-  const approved  = vendors?.filter((v) => v.pivot?.status === "approved") ?? [];
-  const others    = vendors?.filter((v) => !["pending", "approved"].includes(v.pivot?.status)) ?? [];
-
-  const StatusBadge = ({ status }) => ({
-    pending:   <span className="badge badge-yellow"><Clock size={10} className="mr-1" />Pending</span>,
-    approved:  <span className="badge badge-green"><CheckCircle size={10} className="mr-1" />Approved</span>,
-    rejected:  <span className="badge badge-red"><XCircle size={10} className="mr-1" />Rejected</span>,
-    suspended: <span className="badge badge-gray">Suspended</span>,
-  }[status] ?? <span className="badge badge-gray">{status}</span>);
+  const TABS = [
+    { key: "pending",   label: "Pending",   count: counts.pending },
+    { key: "approved",  label: "Approved",  count: counts.approved },
+    { key: "rejected",  label: "Rejected",  count: counts.rejected },
+    { key: "suspended", label: "Suspended", count: counts.suspended },
+    { key: "all",       label: "All",       count: (vendors ?? []).length },
+  ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Vendor Approvals</h1>
-        <p className="text-sm text-gray-500 mt-1">Manage vendor access requests for your company</p>
+        <p className="text-sm text-gray-500 mt-1">
+          Approve or reject vendor access requests for your company
+        </p>
       </div>
 
-      {/* Pending requests */}
-      {pending.length > 0 && (
-        <div className="card space-y-4">
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={18} className="text-yellow-500" />
-            <h2 className="font-semibold text-gray-900">Pending Requests ({pending.length})</h2>
-          </div>
-          <div className="space-y-4">
-            {pending.map((v) => (
-              <div key={v.id} className="border border-yellow-100 rounded-xl p-4 bg-yellow-50 space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-semibold text-gray-900">{v.name}</p>
-                    <p className="text-sm text-gray-500">{v.contact_email} · {v.contact_phone}</p>
-                    <p className="text-xs text-gray-400">{v.city}, {v.state}</p>
-                  </div>
-                  <StatusBadge status="pending" />
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <button
-                    onClick={() => approve.mutate(v.id)}
-                    disabled={approve.isPending}
-                    className="btn-success text-sm"
-                  >
-                    <CheckCircle size={14} />
-                    Approve
-                  </button>
-
-                  <div className="flex gap-2 flex-1">
-                    <input
-                      type="text"
-                      placeholder="Rejection reason..."
-                      value={reason[v.id] ?? ""}
-                      onChange={(e) => setReason((p) => ({ ...p, [v.id]: e.target.value }))}
-                      className="input text-sm flex-1"
-                    />
-                    <button
-                      onClick={() => {
-                        if (!reason[v.id]) { toast.error("Enter rejection reason."); return; }
-                        reject.mutate({ vendorId: v.id, reason: reason[v.id] });
-                      }}
-                      disabled={reject.isPending}
-                      className="btn-danger text-sm"
-                    >
-                      <XCircle size={14} />
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              </div>
+      {/* Super admin: company selector */}
+      {user?.role === "super_admin" && (
+        <div className="card">
+          <label className="label">Select Company</label>
+          <select
+            className="input max-w-xs"
+            value={selectedCompanyId ?? ""}
+            onChange={e => setSelectedCompanyId(e.target.value || null)}
+          >
+            <option value="">— choose company —</option>
+            {(companies ?? []).map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
-          </div>
+          </select>
         </div>
       )}
 
-      {/* Approved vendors */}
-      {approved.length > 0 && (
-        <div className="card space-y-3">
-          <h2 className="font-semibold text-gray-900">Approved Vendors ({approved.length})</h2>
-          <div className="divide-y divide-gray-50">
-            {approved.map((v) => (
-              <div key={v.id} className="flex items-center justify-between py-3">
-                <div>
-                  <p className="font-medium text-gray-900">{v.name}</p>
-                  <p className="text-xs text-gray-400">{v.contact_email}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <StatusBadge status="approved" />
-                  <button
-                    onClick={() => api.post(`/companies/${companyId}/vendors/${v.id}/suspend`).then(() => {
-                      toast.success("Suspended.");
-                      queryClient.invalidateQueries(["company-vendors"]);
-                    })}
-                    className="text-xs text-red-500 hover:underline"
-                  >
-                    Suspend
-                  </button>
-                </div>
-              </div>
+      {companyId && (
+        <>
+          {/* Status tabs */}
+          <div className="flex gap-1 flex-wrap">
+            {TABS.map(t => (
+              <button
+                key={t.key}
+                onClick={() => setFilter(t.key)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  filter === t.key
+                    ? "bg-brand-600 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {t.label}
+                {t.count > 0 && (
+                  <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
+                    filter === t.key ? "bg-white/20" : "bg-gray-200"
+                  }`}>
+                    {t.count}
+                  </span>
+                )}
+              </button>
             ))}
           </div>
-        </div>
+
+          {isLoading && <div className="text-gray-400 text-sm">Loading…</div>}
+
+          {!isLoading && filtered.length === 0 && (
+            <div className="card text-center py-12 text-gray-400">
+              <AlertTriangle className="w-10 h-10 mx-auto mb-2 text-gray-200" />
+              <p>No {filter === "all" ? "" : filter} vendor requests.</p>
+              {filter === "pending" && (
+                <p className="text-sm mt-1">Vendors will appear here after they request access.</p>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {filtered.map(v => (
+              <VendorRow
+                key={v.id}
+                vendor={v}
+                companyId={companyId}
+                onRefresh={() => queryClient.invalidateQueries(["company-vendors", companyId])}
+              />
+            ))}
+          </div>
+        </>
       )}
 
-      {pending.length === 0 && approved.length === 0 && !isLoading && (
+      {!companyId && user?.role === "super_admin" && (
         <div className="card text-center py-12 text-gray-400">
-          <AlertTriangle className="w-12 h-12 mx-auto mb-3 text-gray-200" />
-          <p>No vendor requests yet.</p>
-          <p className="text-sm mt-1">Vendors will appear here after they request access.</p>
+          <p>Select a company above to manage its vendor requests.</p>
         </div>
       )}
     </div>

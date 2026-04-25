@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# System deps for PDF processing
+# System deps: PDF processing + C++ compiler for insightface Cython extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libmupdf-dev \
     poppler-utils \
@@ -15,10 +15,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr-ben \
     tesseract-ocr-guj \
     tesseract-ocr-pan \
+    gcc \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-download InsightFace buffalo_l model so first request is instant
+RUN python -c "\
+from insightface.app import FaceAnalysis; \
+fa = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider']); \
+fa.prepare(ctx_id=-1, det_size=(640,640)); \
+print('InsightFace model pre-loaded OK')"
 
 COPY . .
 

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kill %1)",
+      "PowerShell(docker exec ams_backend grep -A5 \"function workerTemplates\" /var/www/html/app/Http/Controllers/AttendanceController.php)",
+      "PowerShell(docker cp \"c:\\\\Users\\\\sdmal\\\\projects\\\\attendance_system\\\\backend\\\\app\\\\Http\\\\Controllers\\\\AttendanceController.php\" \"ams_backend:/var/www/html/app/Http/Controllers/AttendanceController.php\")",
+      "PowerShell(docker exec ams_backend php artisan optimize:clear)",
+      "PowerShell(docker exec ams_backend grep -A8 \"function workerTemplates\" /var/www/html/app/Http/Controllers/AttendanceController.php)",
+      "PowerShell(docker cp \"c:\\\\Users\\\\sdmal\\\\projects\\\\attendance_system\\\\backend\\\\app\\\\Http\\\\Controllers\\\\WorkerController.php\" \"ams_backend:/var/www/html/app/Http/Controllers/WorkerController.php\")",
+      "PowerShell(docker cp \"c:\\\\Users\\\\sdmal\\\\projects\\\\attendance_system\\\\backend\\\\routes\\\\api.php\" \"ams_backend:/var/www/html/routes/api.php\")",
+      "PowerShell(docker exec ams_frontend ls /app/src/pages/companies/)"
+    ]
+  }
+}

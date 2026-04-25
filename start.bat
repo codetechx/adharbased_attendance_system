@@ -127,18 +127,37 @@ docker compose exec -T backend php artisan config:cache >nul 2>&1
 
 echo  [OK] Laravel ready.
 
-:: ── Biometric agent ───────────────────────────────────────────────────────────
+:: ── Biometric agent (Python WBF) ──────────────────────────────────────────────
 echo.
-echo  [STEP 5/5] Installing biometric agent (HU20-AP)...
-where npm >nul 2>&1
+echo  [STEP 5/5] Starting Biometric Agent (WBF / HU20-AP)...
+where py >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
-    cd biometric-agent
-    npm install
-    cd ..
-    echo  [OK] Biometric agent ready.
+    py -3 -m pip install websockets --quiet
+
+    :: Kill any stale agent first
+    for /f "tokens=5" %%p in ('netstat -aon 2^>nul ^| findstr ":12345 "') do (
+        taskkill /PID %%p /F >nul 2>&1
+    )
+    timeout /t 1 /nobreak >nul
+
+    powershell -NoProfile -Command ^
+      "Start-Process py ^
+         -ArgumentList '-3 winbio_server.py' ^
+         -WorkingDirectory '%~dp0biometric-agent' ^
+         -WindowStyle Hidden ^
+         -RedirectStandardOutput '%~dp0biometric-agent\agent.log' ^
+         -RedirectStandardError  '%~dp0biometric-agent\agent-error.log'"
+
+    timeout /t 4 /nobreak >nul
+    curl -s http://localhost:12345/health >nul 2>&1
+    if %errorlevel% == 0 (
+        echo  [OK] Biometric Agent is running ^(WBF mode^).
+    ) else (
+        echo  [INFO] Agent still starting — check http://localhost:12345/health
+    )
 ) else (
-    echo  [WARN] npm not found. Install Node.js 18+: https://nodejs.org
-    echo         Then run:  cd biometric-agent  ^&^&  npm install
+    echo  [WARN] Python not found. Install Python 3.10+: https://python.org
+    echo         Then run start-winbio-agent.bat from the biometric-agent folder.
 )
 
 :: ── Done ──────────────────────────────────────────────────────────────────────
@@ -147,8 +166,9 @@ echo  =====================================================
 echo   SETUP COMPLETE
 echo  =====================================================
 echo.
-echo   Frontend  : http://localhost:5173
+echo   App       : http://localhost
 echo   API       : http://localhost/api
+echo   Agent     : http://localhost:12345/health
 echo   PDF Svc   : http://localhost:8001/health
 echo.
 echo   Login credentials:
@@ -157,12 +177,8 @@ echo     company@ams.local     /  Admin@12345
 echo     gate@ams.local        /  Admin@12345
 echo     vendor@ams.local      /  Admin@12345
 echo.
-echo   Fingerprint agent - open a new CMD window and run:
-echo     cd biometric-agent
-echo     npm start
-echo.
-echo   Daily use:
-echo     up.bat    = start all services
-echo     down.bat  = stop all services
+echo   Daily use (double-click):
+echo     up.bat    = start Docker + Biometric Agent
+echo     down.bat  = stop everything
 echo.
 pause

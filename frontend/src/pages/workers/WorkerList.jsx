@@ -27,6 +27,19 @@ export default function WorkerList() {
   });
 
   const canRegister = ["super_admin", "vendor_admin", "vendor_operator"].includes(user?.role);
+  const canActivate = ["super_admin", "company_admin", "vendor_admin"].includes(user?.role);
+
+  const activateMutation = useMutation({
+    mutationFn: (id) => api.post(`/workers/${id}/activate`),
+    onSuccess:  () => { queryClient.invalidateQueries(["workers"]); toast.success("Worker activated."); },
+    onError:    () => toast.error("Failed to activate worker."),
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: (id) => api.post(`/workers/${id}/deactivate`),
+    onSuccess:  () => { queryClient.invalidateQueries(["workers"]); toast.success("Worker deactivated."); },
+    onError:    () => toast.error("Failed to deactivate worker."),
+  });
 
   return (
     <div className="space-y-5">
@@ -134,6 +147,33 @@ export default function WorkerList() {
                         <Link to={`/workers/${w.id}/edit`} className="text-xs text-brand-600 hover:underline">
                           Edit
                         </Link>
+                      )}
+                      {canActivate && w.status === "pending" && (
+                        <button
+                          onClick={() => activateMutation.mutate(w.id)}
+                          disabled={activateMutation.isPending}
+                          className="text-xs text-green-600 hover:underline disabled:opacity-50"
+                        >
+                          Activate
+                        </button>
+                      )}
+                      {canActivate && w.status === "active" && (
+                        <button
+                          onClick={() => deactivateMutation.mutate(w.id)}
+                          disabled={deactivateMutation.isPending}
+                          className="text-xs text-red-500 hover:underline disabled:opacity-50"
+                        >
+                          Deactivate
+                        </button>
+                      )}
+                      {canActivate && w.status === "inactive" && (
+                        <button
+                          onClick={() => activateMutation.mutate(w.id)}
+                          disabled={activateMutation.isPending}
+                          className="text-xs text-green-600 hover:underline disabled:opacity-50"
+                        >
+                          Activate
+                        </button>
                       )}
                     </div>
                   </td>

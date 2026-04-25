@@ -14,10 +14,17 @@ class UserController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $auth = $request->user();
+
         $users = User::with(['company:id,name', 'vendor:id,name'])
-            ->when($request->role, fn($q, $r) => $q->where('role', $r))
-            ->when($request->company_id, fn($q, $id) => $q->where('company_id', $id))
-            ->when($request->vendor_id, fn($q, $id) => $q->where('vendor_id', $id))
+            // company_admin only sees their own gate users
+            ->when($auth->role === 'company_admin', fn($q) =>
+                $q->where('company_id', $auth->company_id)->where('role', 'company_gate')
+            )
+            // super_admin can filter freely
+            ->when($auth->isSuperAdmin() && $request->role,       fn($q, $r)  => $q->where('role', $r))
+            ->when($auth->isSuperAdmin() && $request->company_id, fn($q, $id) => $q->where('company_id', $id))
+            ->when($auth->isSuperAdmin() && $request->vendor_id,  fn($q, $id) => $q->where('vendor_id', $id))
             ->orderBy('name')
             ->paginate(30);
 
@@ -26,6 +33,24 @@ class UserController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $auth = $request->user();
+
+        if ($auth->role === 'company_admin') {
+            // company_admin can only create gate users for their own company
+            $data = $request->validate([
+                'name'     => 'required|string|max:100',
+                'email'    => 'required|email|unique:users',
+                'password' => ['required', Password::min(8)->letters()->numbers()],
+                'phone'    => 'nullable|string|max:15',
+            ]);
+            $data['role']       = 'company_gate';
+            $data['company_id'] = $auth->company_id;
+            $data['is_active']  = true;
+            $user = User::create($data);
+            $this->audit->log($auth->id, 'user_created', User::class, $user->id);
+            return response()->json($user, 201);
+        }
+
         $data = $request->validate([
             'name'       => 'required|string|max:100',
             'email'      => 'required|email|unique:users',
@@ -39,7 +64,7 @@ class UserController extends Controller
         $data['is_active'] = true;
         $user = User::create($data);
 
-        $this->audit->log($request->user()->id, 'user_created', User::class, $user->id);
+        $this->audit->log($auth->id, 'user_created', User::class, $user->id);
 
         return response()->json($user, 201);
     }
@@ -51,6 +76,24 @@ class UserController extends Controller
 
     public function update(Request $request, User $user): JsonResponse
     {
+        $auth = $request->user();
+
+        if ($auth->role === 'company_admin') {
+            if ($user->company_id !== $auth->company_id || $user->role !== 'company_gate') {
+                abort(403, 'You can only edit gate users for your own company.');
+            }
+
+            $data = $request->validate([
+                'name'      => 'sometimes|string|max:100',
+                'email'     => "sometimes|email|unique:users,email,{$user->id}",
+                'phone'     => 'nullable|string|max:15',
+                'is_active' => 'sometimes|boolean',
+            ]);
+            $user->update($data);
+            $this->audit->log($auth->id, 'user_updated', User::class, $user->id);
+            return response()->json($user->fresh());
+        }
+
         $data = $request->validate([
             'name'       => 'sometimes|string|max:100',
             'email'      => "sometimes|email|unique:users,email,{$user->id}",
@@ -62,19 +105,25 @@ class UserController extends Controller
         ]);
 
         $user->update($data);
-        $this->audit->log($request->user()->id, 'user_updated', User::class, $user->id);
+        $this->audit->log($auth->id, 'user_updated', User::class, $user->id);
 
         return response()->json($user->fresh());
     }
 
     public function destroy(Request $request, User $user): JsonResponse
     {
-        if ($user->id === $request->user()->id) {
+        $auth = $request->user();
+
+        if ($auth->id === $user->id) {
             return response()->json(['message' => 'Cannot delete your own account.'], 422);
         }
 
+        if ($auth->role === 'company_admin' && ($user->company_id !== $auth->company_id || $user->role !== 'company_gate')) {
+            abort(403, 'You can only delete gate users for your own company.');
+        }
+
         $user->delete();
-        $this->audit->log($request->user()->id, 'user_deleted', User::class, $user->id);
+        $this->audit->log($auth->id, 'user_deleted', User::class, $user->id);
 
         return response()->json(['message' => 'User deleted.']);
     }

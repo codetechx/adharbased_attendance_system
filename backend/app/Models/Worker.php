@@ -33,6 +33,8 @@ class Worker extends Model
         'fingerprint_template',    // base64 encoded SecuGen FMD
         'fingerprint_enrolled_at',
         'fingerprint_quality',
+        'face_descriptor',         // 128-element float array from face-api.js
+        'face_enrolled_at',
         'status',
         'notes',
         'registered_by',
@@ -47,6 +49,8 @@ class Worker extends Model
         'dob'                   => 'date',
         'aadhaar_data_extracted' => 'array',
         'fingerprint_enrolled_at' => 'datetime',
+        'face_descriptor'        => 'array',
+        'face_enrolled_at'       => 'datetime',
     ];
 
     // ─── Relationships ─────────────────────────────────────────────────────────
