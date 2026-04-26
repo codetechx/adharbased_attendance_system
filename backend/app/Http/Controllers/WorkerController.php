@@ -12,21 +12,22 @@ use Illuminate\Validation\Rule;
 
 class WorkerController extends Controller
 {
-    public function __construct(
-        private AuditService $audit,
-    ) {}
+    public function __construct(private AuditService $audit) {}
 
     public function index(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $user  = $request->user();
         $query = Worker::with(['vendor:id,name'])
             ->when($user->isVendorUser(), fn($q) => $q->where('vendor_id', $user->vendor_id))
             ->when($user->isCompanyUser(), function ($q) use ($user) {
-                $approvedVendorIds = \DB::table('company_vendors')
+                // Company users only see workers deployed to them today
+                $activeWorkerIds = \DB::table('worker_assignments')
                     ->where('company_id', $user->company_id)
-                    ->where('status', 'approved')
-                    ->pluck('vendor_id');
-                $q->whereIn('vendor_id', $approvedVendorIds);
+                    ->where('status', 'active')
+                    ->where('start_date', '<=', today())
+                    ->where('end_date', '>=', today())
+                    ->pluck('worker_id');
+                $q->whereIn('id', $activeWorkerIds);
             })
             ->when($request->status, fn($q, $s) => $q->where('status', $s))
             ->when($request->search, fn($q, $s) => $q->where('name', 'like', "%{$s}%"))
@@ -41,9 +42,9 @@ class WorkerController extends Controller
 
         $data = $request->validate([
             'name'                   => 'required|string|max:120',
-            'dob'                    => 'required|date|before:today',
-            'gender'                 => 'required|in:M,F,O',
-            'address'                => 'required|string',
+            'dob'                    => 'nullable|date|before:today',
+            'gender'                 => 'nullable|in:M,F,O',
+            'address'                => 'nullable|string',
             'city'                   => 'nullable|string|max:100',
             'state'                  => 'nullable|string|max:100',
             'pin'                    => 'nullable|string|size:6',
@@ -60,12 +61,10 @@ class WorkerController extends Controller
             ],
         ]);
 
-        // Vendor users can only register under their own vendor
         if ($user->isVendorUser()) {
             $data['vendor_id'] = $user->vendor_id;
         }
 
-        // Guard: vendor_id must be resolved at this point
         if (empty($data['vendor_id'])) {
             return response()->json(['message' => 'vendor_id is required.'], 422);
         }
@@ -86,7 +85,7 @@ class WorkerController extends Controller
     {
         $this->authorizeWorkerAccess($request->user(), $worker);
 
-        return response()->json($worker->load(['vendor', 'assignments.company']));
+        return response()->json($worker->load(['vendor', 'assignments.company', 'idDocuments']));
     }
 
     public function update(Request $request, Worker $worker): JsonResponse
@@ -128,29 +127,25 @@ class WorkerController extends Controller
         $this->authorizeWorkerAccess($request->user(), $worker);
 
         $data = $request->validate([
-            'template' => 'required|string', // base64 FMD from local biometric agent
+            'template' => 'required|string',
             'quality'  => 'required|integer|min:0|max:100',
         ]);
 
         $worker->update([
-            'fingerprint_template'   => encrypt($data['template']), // store encrypted
-            'fingerprint_quality'    => $data['quality'],
+            'fingerprint_template'    => encrypt($data['template']),
+            'fingerprint_quality'     => $data['quality'],
             'fingerprint_enrolled_at' => now(),
+            'status'                  => Worker::STATUS_ACTIVE, // active once fingerprint is enrolled
         ]);
-
-        // If Aadhaar is also done, activate the worker
-        if ($worker->aadhaar_number_masked) {
-            $worker->update(['status' => Worker::STATUS_ACTIVE]);
-        }
 
         $this->audit->log($request->user()->id, 'fingerprint_enrolled', Worker::class, $worker->id, [
             'quality' => $data['quality'],
         ]);
 
         return response()->json([
-            'message'              => 'Fingerprint enrolled successfully.',
-            'status'               => $worker->fresh()->status,
-            'fingerprint_quality'  => $data['quality'],
+            'message'                 => 'Fingerprint enrolled successfully.',
+            'status'                  => Worker::STATUS_ACTIVE,
+            'fingerprint_quality'     => $data['quality'],
             'fingerprint_enrolled_at' => now(),
         ]);
     }
@@ -177,9 +172,7 @@ class WorkerController extends Controller
     {
         $this->authorizeWorkerAccess($request->user(), $worker);
 
-        $request->validate([
-            'photo' => 'required|image|max:2048|mimes:jpeg,png,jpg',
-        ]);
+        $request->validate(['photo' => 'required|image|max:2048|mimes:jpeg,png,jpg']);
 
         if ($worker->photo_path) {
             Storage::disk('private')->delete($worker->photo_path);
@@ -195,6 +188,7 @@ class WorkerController extends Controller
     {
         $worker->update(['status' => Worker::STATUS_ACTIVE]);
         $this->audit->log($request->user()->id, 'worker_activated', Worker::class, $worker->id);
+
         return response()->json(['message' => 'Worker activated.']);
     }
 
@@ -202,6 +196,7 @@ class WorkerController extends Controller
     {
         $worker->update(['status' => Worker::STATUS_INACTIVE]);
         $this->audit->log($request->user()->id, 'worker_deactivated', Worker::class, $worker->id);
+
         return response()->json(['message' => 'Worker deactivated.']);
     }
 
@@ -218,11 +213,14 @@ class WorkerController extends Controller
         }
 
         if ($user->isCompanyUser()) {
-            $assignedToCompany = $worker->assignments()
+            $hasActiveDeployment = $worker->assignments()
                 ->where('company_id', $user->company_id)
+                ->where('status', 'active')
+                ->where('start_date', '<=', today())
+                ->where('end_date', '>=', today())
                 ->exists();
-            if (! $assignedToCompany) {
-                abort(403, 'Worker not assigned to your company.');
+            if (! $hasActiveDeployment) {
+                abort(403, 'Worker not deployed to your company today.');
             }
         }
     }

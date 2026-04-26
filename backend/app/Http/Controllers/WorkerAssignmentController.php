@@ -18,10 +18,10 @@ class WorkerAssignmentController extends Controller
         $user  = $request->user();
         $query = WorkerAssignment::with(['worker:id,name,status', 'company:id,name', 'vendor:id,name'])
             ->when($user->isCompanyUser(), fn($q) => $q->where('company_id', $user->company_id))
-            ->when($user->isVendorUser(), fn($q) => $q->where('vendor_id', $user->vendor_id))
-            ->when($request->date, fn($q, $d) => $q->whereDate('assignment_date', $d))
-            ->when($request->status, fn($q, $s) => $q->where('status', $s))
-            ->orderByDesc('assignment_date');
+            ->when($user->isVendorUser(),  fn($q) => $q->where('vendor_id', $user->vendor_id))
+            ->when($request->status,  fn($q, $s) => $q->where('status', $s))
+            ->when($request->date, fn($q, $d) => $q->where('start_date', '<=', $d)->where('end_date', '>=', $d))
+            ->orderByDesc('start_date');
 
         return response()->json($query->paginate(30));
     }
@@ -31,64 +31,55 @@ class WorkerAssignmentController extends Controller
         $user = $request->user();
 
         $data = $request->validate([
-            'worker_id'       => 'required|integer|exists:workers,id',
-            'company_id'      => 'required|integer|exists:companies,id',
-            'assignment_date' => 'required|date|after_or_equal:today',
-            'shift'           => 'nullable|string|in:morning,afternoon,night,general',
-            'gate'            => 'nullable|string',
-            'notes'           => 'nullable|string',
+            'worker_id'  => 'required|integer|exists:workers,id',
+            'company_id' => 'required|integer|exists:companies,id',
+            'start_date' => 'required|date|after_or_equal:today',
+            'end_date'   => 'required|date|after_or_equal:start_date',
+            'shift'      => 'nullable|string|in:morning,afternoon,night,general',
+            'gate'       => 'nullable|string',
+            'notes'      => 'nullable|string',
         ]);
 
         $worker  = Worker::findOrFail($data['worker_id']);
         $company = Company::findOrFail($data['company_id']);
 
-        // Vendor user can only assign their own workers
-        if ($user->isVendorUser() && $worker->vendor_id !== $user->vendor_id) {
-            return response()->json(['message' => 'Cannot assign worker from another vendor.'], 403);
-        }
+        abort_if(
+            $user->isVendorUser() && $worker->vendor_id !== $user->vendor_id,
+            403, 'Cannot deploy a worker from another vendor.'
+        );
 
-        // Check vendor is approved for the target company
         $isApproved = $company->vendors()
             ->where('vendor_id', $worker->vendor_id)
-            ->wherePivot('status', 'approved')
+            ->where('company_vendors.status', 'approved')
             ->exists();
 
-        if (! $isApproved) {
-            return response()->json([
-                'message' => 'Your vendor is not approved for this company. Request approval first.',
-            ], 422);
-        }
+        abort_unless($isApproved, 422, 'Your vendor is not approved for this company. Request approval first.');
 
-        // Worker must be active (Aadhaar + fingerprint done)
-        if ($worker->status !== Worker::STATUS_ACTIVE) {
-            return response()->json([
-                'message' => 'Worker enrollment is incomplete. Aadhaar and fingerprint must be registered first.',
-            ], 422);
-        }
+        abort_unless(
+            $worker->status === Worker::STATUS_ACTIVE,
+            422, 'Worker enrollment is incomplete. Fingerprint must be enrolled first.'
+        );
 
-        // Prevent duplicate active assignment for same date + company
-        $duplicate = WorkerAssignment::where('worker_id', $data['worker_id'])
+        $overlap = WorkerAssignment::where('worker_id', $data['worker_id'])
             ->where('company_id', $data['company_id'])
-            ->whereDate('assignment_date', $data['assignment_date'])
             ->where('status', WorkerAssignment::STATUS_ACTIVE)
+            ->where('start_date', '<=', $data['end_date'])
+            ->where('end_date', '>=', $data['start_date'])
             ->exists();
 
-        if ($duplicate) {
-            return response()->json([
-                'message' => 'Worker is already assigned to this company on this date.',
-            ], 422);
-        }
+        abort_if($overlap, 422, 'Worker already has an overlapping active deployment at this company.');
 
-        $data['vendor_id']    = $worker->vendor_id;
-        $data['assigned_by']  = $user->id;
-        $data['status']       = WorkerAssignment::STATUS_ACTIVE;
+        $data['vendor_id']   = $worker->vendor_id;
+        $data['assigned_by'] = $user->id;
+        $data['status']      = WorkerAssignment::STATUS_ACTIVE;
+        $data['is_locked']   = false;
 
         $assignment = WorkerAssignment::create($data);
 
         $this->audit->log($user->id, 'assignment_created', WorkerAssignment::class, $assignment->id, [
             'worker_id'  => $data['worker_id'],
             'company_id' => $data['company_id'],
-            'date'       => $data['assignment_date'],
+            'period'     => "{$data['start_date']} → {$data['end_date']}",
         ]);
 
         return response()->json($assignment->load(['worker', 'company', 'vendor']), 201);
@@ -101,14 +92,22 @@ class WorkerAssignmentController extends Controller
 
     public function update(Request $request, WorkerAssignment $assignment): JsonResponse
     {
+        if ($assignment->is_locked) {
+            return response()->json([
+                'message' => 'This deployment is locked — attendance has already been marked. Dates cannot be changed.',
+            ], 422);
+        }
+
         $data = $request->validate([
-            'shift'  => 'nullable|string',
-            'gate'   => 'nullable|string',
-            'status' => 'nullable|in:active,cancelled',
-            'notes'  => 'nullable|string',
+            'start_date' => 'nullable|date',
+            'end_date'   => 'nullable|date|after_or_equal:start_date',
+            'shift'      => 'nullable|string',
+            'gate'       => 'nullable|string',
+            'status'     => 'nullable|in:active,cancelled',
+            'notes'      => 'nullable|string',
         ]);
 
-        $assignment->update($data);
+        $assignment->update(array_filter($data, fn($v) => $v !== null));
         $this->audit->log($request->user()->id, 'assignment_updated', WorkerAssignment::class, $assignment->id);
 
         return response()->json($assignment->fresh());
@@ -116,10 +115,16 @@ class WorkerAssignmentController extends Controller
 
     public function destroy(Request $request, WorkerAssignment $assignment): JsonResponse
     {
+        if ($assignment->is_locked) {
+            return response()->json([
+                'message' => 'This deployment is locked — attendance has been recorded. Cancel it instead by setting status=cancelled.',
+            ], 422);
+        }
+
         $assignment->update(['status' => WorkerAssignment::STATUS_CANCELLED]);
         $this->audit->log($request->user()->id, 'assignment_cancelled', WorkerAssignment::class, $assignment->id);
 
-        return response()->json(['message' => 'Assignment cancelled.']);
+        return response()->json(['message' => 'Deployment cancelled.']);
     }
 
     public function todayForCompany(Request $request, Company $company): JsonResponse
@@ -133,7 +138,7 @@ class WorkerAssignmentController extends Controller
             ->get()
             ->map(function ($a) {
                 $a->worker->has_fingerprint = $a->worker->hasFingerprint();
-                unset($a->worker->fingerprint_template); // never expose raw template
+                unset($a->worker->fingerprint_template);
                 return $a;
             });
 
@@ -144,7 +149,7 @@ class WorkerAssignmentController extends Controller
     {
         $assignments = WorkerAssignment::with(['company:id,name'])
             ->where('worker_id', $worker->id)
-            ->orderByDesc('assignment_date')
+            ->orderByDesc('start_date')
             ->paginate(20);
 
         return response()->json($assignments);

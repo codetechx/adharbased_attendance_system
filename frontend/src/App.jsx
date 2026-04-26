@@ -5,6 +5,7 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import CompanyList from "@/pages/companies/CompanyList";
 import VendorList from "@/pages/vendors/VendorList";
+import VendorProfile from "@/pages/vendors/VendorProfile";
 import VendorApproval from "@/pages/vendors/VendorApproval";
 import VendorCompanyAccess from "@/pages/vendors/VendorCompanyAccess";
 import WorkerList from "@/pages/workers/WorkerList";
@@ -50,7 +51,16 @@ export default function App() {
         } />
 
         {/* Vendors */}
-        <Route path="vendors" element={<VendorList />} />
+        <Route path="vendors" element={
+          <PrivateRoute roles={["super_admin", "company_admin", "company_gate"]}>
+            <VendorList />
+          </PrivateRoute>
+        } />
+        <Route path="profile" element={
+          <PrivateRoute roles={["vendor_admin", "vendor_operator"]}>
+            <VendorProfile />
+          </PrivateRoute>
+        } />
         <Route path="vendors/approval" element={
           <PrivateRoute roles={["super_admin", "company_admin"]}>
             <VendorApproval />

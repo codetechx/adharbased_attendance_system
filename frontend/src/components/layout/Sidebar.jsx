@@ -1,8 +1,9 @@
+import PropTypes from "prop-types";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard, Building2, Users, UserCheck, ClipboardList,
-  Fingerprint, BarChart2, AlertTriangle, ShieldCheck, X, FlaskConical, UserCog,
+  Fingerprint, BarChart2, AlertTriangle, ShieldCheck, X, FlaskConical, UserCog, Settings,
 } from "lucide-react";
 
 const NAV = [
@@ -15,28 +16,29 @@ const NAV = [
   {
     label: "Administration",
     items: [
-      { to: "/companies", icon: Building2,  label: "Companies", roles: ["super_admin"] },
-      { to: "/users",     icon: UserCog,    label: "Users",     roles: ["super_admin"] },
-      { to: "/users",     icon: UserCog,    label: "Gate Users", roles: ["company_admin"] },
-      { to: "/vendors",   icon: Users,      label: "Vendors",   roles: ["super_admin", "company_admin", "company_gate", "vendor_admin", "vendor_operator"] },
-      { to: "/vendors/approval", icon: ShieldCheck, label: "Vendor Approvals", roles: ["super_admin", "company_admin"] },
-      { to: "/vendors/company-access", icon: Building2, label: "Company Access", roles: ["vendor_admin", "vendor_operator"] },
+      { to: "/companies",              icon: Building2,   label: "Companies",       roles: ["super_admin"] },
+      { to: "/users",                  icon: UserCog,     label: "Users",           roles: ["super_admin"] },
+      { to: "/users",                  icon: UserCog,     label: "Gate Users",      roles: ["company_admin"] },
+      { to: "/vendors",                icon: Users,       label: "Vendors",         roles: ["super_admin", "company_admin", "company_gate"], end: true },
+      { to: "/profile",               icon: Settings,    label: "My Organization", roles: ["vendor_admin", "vendor_operator"] },
+      { to: "/vendors/approval",       icon: ShieldCheck, label: "Vendor Approvals",roles: ["super_admin", "company_admin"] },
+      { to: "/vendors/company-access", icon: Building2,   label: "Company Access",  roles: ["vendor_admin", "vendor_operator"] },
     ],
   },
   {
     label: "Workers",
     items: [
-      { to: "/workers",          icon: UserCheck,    label: "All Workers",   roles: ["all"] },
-      { to: "/workers/register", icon: Users,        label: "Register Worker", roles: ["super_admin", "vendor_admin", "vendor_operator"] },
-      { to: "/workers/assign",   icon: ClipboardList, label: "Assign Workers", roles: ["super_admin", "vendor_admin"] },
+      { to: "/workers",          icon: UserCheck,    label: "All Workers",    roles: ["all"], end: true },
+      { to: "/workers/register", icon: Users,        label: "Register Worker",roles: ["super_admin", "vendor_admin", "vendor_operator"] },
+      { to: "/workers/assign",   icon: ClipboardList,label: "Deploy Workers", roles: ["super_admin", "vendor_admin"] },
     ],
   },
   {
     label: "Attendance",
     items: [
-      { to: "/attendance",            icon: BarChart2,    label: "Attendance Log",  roles: ["all"] },
-      { to: "/attendance/mark",       icon: Fingerprint,   label: "Mark Attendance", roles: ["super_admin", "company_admin", "company_gate"] },
-      { to: "/attendance/exceptions", icon: AlertTriangle, label: "Exceptions",      roles: ["super_admin", "company_admin", "vendor_admin"] },
+      { to: "/attendance",            icon: BarChart2,    label: "Attendance Log",  roles: ["all"], end: true },
+      { to: "/attendance/mark",       icon: Fingerprint,  label: "Mark Attendance", roles: ["super_admin", "company_admin", "company_gate"] },
+      { to: "/attendance/exceptions", icon: AlertTriangle,label: "Exceptions",      roles: ["super_admin", "company_admin", "vendor_admin"] },
     ],
   },
   {
@@ -56,10 +58,13 @@ export default function Sidebar({ open, onClose }) {
 
   return (
     <>
-      {/* Mobile overlay */}
-      <div
-        className="fixed inset-0 bg-black/30 z-20 lg:hidden"
+      {/* Mobile overlay — button so keyboard users can dismiss */}
+      <button
+        type="button"
+        aria-label="Close sidebar"
+        className="fixed inset-0 bg-black/30 z-20 lg:hidden w-full cursor-default"
         onClick={onClose}
+        onKeyDown={(e) => e.key === "Escape" && onClose()}
       />
 
       <aside className="fixed left-0 top-0 bottom-0 w-64 bg-white border-r border-gray-200 z-30 flex flex-col">
@@ -69,7 +74,7 @@ export default function Sidebar({ open, onClose }) {
             <Fingerprint className="w-7 h-7 text-brand-600" />
             <span className="text-lg font-bold text-gray-900">AMS</span>
           </div>
-          <button className="p-1 rounded lg:hidden" onClick={onClose}>
+          <button type="button" className="p-1 rounded lg:hidden" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
         </div>
@@ -79,7 +84,7 @@ export default function Sidebar({ open, onClose }) {
           <p className="text-xs text-brand-700 font-medium truncate">{user?.name}</p>
           <p className="text-xs text-brand-500 capitalize">{user?.role?.replace("_", " ")}</p>
           {user?.company && <p className="text-xs text-gray-500 truncate">{user.company.name}</p>}
-          {user?.vendor && <p className="text-xs text-gray-500 truncate">{user.vendor.name}</p>}
+          {user?.vendor  && <p className="text-xs text-gray-500 truncate">{user.vendor.name}</p>}
         </div>
 
         {/* Navigation */}
@@ -96,8 +101,9 @@ export default function Sidebar({ open, onClose }) {
                 <div className="space-y-0.5">
                   {visibleItems.map((item) => (
                     <NavLink
-                      key={item.to}
+                      key={`${item.to}-${item.label}`}
                       to={item.to}
+                      end={item.end ?? false}
                       className={({ isActive }) =>
                         `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                           isActive
@@ -119,3 +125,8 @@ export default function Sidebar({ open, onClose }) {
     </>
   );
 }
+
+Sidebar.propTypes = {
+  open:    PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+};

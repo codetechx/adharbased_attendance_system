@@ -6,17 +6,13 @@ use App\Models\AttendanceLog;
 use App\Models\Worker;
 use App\Models\WorkerAssignment;
 use App\Services\AuditService;
-use App\Services\BiometricService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 
 class AttendanceController extends Controller
 {
-    public function __construct(
-        private BiometricService $biometric,
-        private AuditService $audit,
-    ) {}
+    public function __construct(private AuditService $audit) {}
 
     // ─── List attendance ──────────────────────────────────────────────────────
 
@@ -25,140 +21,42 @@ class AttendanceController extends Controller
         $user  = $request->user();
         $query = AttendanceLog::with(['worker:id,name,aadhaar_number_masked', 'markedBy:id,name'])
             ->when($user->isCompanyUser(), fn($q) => $q->where('company_id', $user->company_id))
-            ->when($user->isVendorUser(), function ($q) use ($user) {
-                $q->whereHas('worker', fn($wq) => $wq->where('vendor_id', $user->vendor_id));
-            })
-            ->when($request->date, fn($q, $d) => $q->whereDate('marked_at', $d))
+            ->when($user->isVendorUser(), fn($q) =>
+                $q->whereHas('worker', fn($wq) => $wq->where('vendor_id', $user->vendor_id))
+            )
+            ->when($request->date,      fn($q, $d) => $q->whereDate('marked_at', $d))
             ->when($request->worker_id, fn($q, $id) => $q->where('worker_id', $id))
-            ->when($request->type, fn($q, $t) => $q->where('type', strtoupper($t)))
+            ->when($request->type,      fn($q, $t) => $q->where('type', strtoupper($t)))
+            ->when($request->location,  fn($q, $l) => $q->where('location_name', $l))
             ->orderByDesc('marked_at');
 
         return response()->json($query->paginate(50));
     }
 
-    // ─── Verify fingerprint before marking ───────────────────────────────────
-
-    public function verifyFingerprint(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'probe_template' => 'required|string', // live scan from gate device
-            'company_id'     => 'required|integer|exists:companies,id',
-        ]);
-
-        $user = $request->user();
-
-        if ($user->isCompanyUser() && $user->company_id !== (int)$data['company_id']) {
-            return response()->json(['message' => 'Unauthorized company.'], 403);
-        }
-
-        // Get all workers assigned to this company today with fingerprints
-        $assignments = WorkerAssignment::with('worker')
-            ->forToday()
-            ->forCompany($data['company_id'])
-            ->whereHas('worker', fn($q) => $q->whereNotNull('fingerprint_template'))
-            ->get();
-
-        if ($assignments->isEmpty()) {
-            return response()->json([
-                'matched'  => false,
-                'message'  => 'No workers assigned today or none have fingerprints enrolled.',
-            ]);
-        }
-
-        $probeTemplate = $data['probe_template'];
-        $matched       = null;
-        $bestScore     = 0;
-
-        // WBF mode: probe_template is a GUID returned by WinBioIdentify.
-        // WBF matched internally; we just look up which worker owns that GUID.
-        $isGuid = (bool) preg_match('/^\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}$/i', $probeTemplate);
-
-        if ($isGuid) {
-            foreach ($assignments as $assignment) {
-                $stored = $assignment->worker->fingerprint_template;
-                if ($stored && decrypt($stored) === $probeTemplate) {
-                    $matched   = ['assignment' => $assignment, 'score' => 100];
-                    break;
-                }
-            }
-        } else {
-            foreach ($assignments as $assignment) {
-                $storedTemplate = decrypt($assignment->worker->fingerprint_template);
-                $result = $this->biometric->matchTemplates($probeTemplate, $storedTemplate);
-
-                if ($result['matched'] && $result['score'] > $bestScore) {
-                    $bestScore = $result['score'];
-                    $matched   = ['assignment' => $assignment, 'score' => $result['score']];
-                }
-            }
-        }
-
-        if (! $matched) {
-            $this->audit->log($user->id, 'fingerprint_verify_failed', null, null, [
-                'company_id' => $data['company_id'],
-                'ip'         => $request->ip(),
-            ]);
-            return response()->json(['matched' => false, 'message' => 'No fingerprint match found.']);
-        }
-
-        $worker     = $matched['assignment']->worker;
-        $assignment = $matched['assignment'];
-
-        // Determine what type of mark is pending
-        $lastLog = AttendanceLog::where('worker_id', $worker->id)
-            ->where('company_id', $data['company_id'])
-            ->today()
-            ->valid()
-            ->orderByDesc('marked_at')
-            ->first();
-
-        $pendingType = ($lastLog?->type === AttendanceLog::TYPE_IN)
-            ? AttendanceLog::TYPE_OUT
-            : AttendanceLog::TYPE_IN;
-
-        return response()->json([
-            'matched'       => true,
-            'score'         => $matched['score'],
-            'worker'        => [
-                'id'                   => $worker->id,
-                'name'                 => $worker->name,
-                'photo_url'            => $worker->photo_url,
-                'aadhaar_number_masked' => $worker->aadhaar_number_masked,
-                'vendor'               => $worker->vendor?->name,
-            ],
-            'assignment_id' => $assignment->id,
-            'pending_type'  => $pendingType,
-            'last_log'      => $lastLog ? [
-                'type'      => $lastLog->type,
-                'marked_at' => $lastLog->marked_at,
-            ] : null,
-        ]);
-    }
-
-    // ─── Worker templates for frontend 1:N matching (SGIBIOSRV) ─────────────────
+    // ─── Worker templates for frontend 1:N SGIBIOSRV matching ────────────────
 
     public function workerTemplates(Request $request): JsonResponse
     {
-        $user = $request->user();
-
+        $user      = $request->user();
         $companyId = $request->input('company_id') ?? $user->company_id;
 
-        if (!$companyId) {
+        if (! $companyId) {
             return response()->json(['message' => 'company_id is required.'], 422);
         }
 
-        if ($user->isCompanyUser() && $user->company_id !== (int)$companyId) {
+        if ($user->isCompanyUser() && $user->company_id !== (int) $companyId) {
             return response()->json(['message' => 'Unauthorized company.'], 403);
         }
 
-        // All active workers from vendors approved for this company
-        $approvedVendorIds = \DB::table('company_vendors')
-            ->where('company_id', $companyId)
-            ->where('status', 'approved')
-            ->pluck('vendor_id');
+        // Only workers with an active deployment covering today
+        $activeWorkerIds = WorkerAssignment::where('company_id', $companyId)
+            ->where('status', WorkerAssignment::STATUS_ACTIVE)
+            ->where('start_date', '<=', today())
+            ->where('end_date', '>=', today())
+            ->pluck('worker_id');
 
         $workers = Worker::with('vendor')
-            ->whereIn('vendor_id', $approvedVendorIds)
+            ->whereIn('id', $activeWorkerIds)
             ->whereNotNull('fingerprint_template')
             ->where('status', Worker::STATUS_ACTIVE)
             ->get();
@@ -166,6 +64,7 @@ class AttendanceController extends Controller
         $result = $workers->map(function ($worker) use ($companyId) {
             $lastLog = AttendanceLog::where('worker_id', $worker->id)
                 ->where('company_id', $companyId)
+                ->where('location_name', AttendanceLog::DEFAULT_LOCATION_NAME)
                 ->today()
                 ->valid()
                 ->orderByDesc('marked_at')
@@ -176,118 +75,152 @@ class AttendanceController extends Controller
                 : AttendanceLog::TYPE_IN;
 
             return [
-                'worker_id'              => $worker->id,
-                'name'                   => $worker->name,
-                'photo_url'              => $worker->photo_url,
-                'aadhaar_number_masked'  => $worker->aadhaar_number_masked,
-                'vendor'                 => $worker->vendor?->name,
-                'assignment_id'          => null,
-                'pending_type'           => $pendingType,
-                'template'               => decrypt($worker->fingerprint_template),
+                'worker_id'             => $worker->id,
+                'name'                  => $worker->name,
+                'photo_url'             => $worker->photo_url,
+                'aadhaar_number_masked' => $worker->aadhaar_number_masked,
+                'vendor'                => $worker->vendor?->name,
+                'assignment_id'         => null,
+                'pending_type'          => $pendingType,
+                'template'              => decrypt($worker->fingerprint_template),
             ];
         });
 
         return response()->json($result);
     }
 
-    // ─── Mark attendance (after fingerprint verification) ────────────────────
+    // ─── Assigned workers list (for photo / manual attendance) ───────────────
+
+    public function assignedWorkers(Request $request): JsonResponse
+    {
+        $user      = $request->user();
+        $companyId = $request->input('company_id') ?? $user->company_id;
+
+        if (! $companyId) {
+            return response()->json(['message' => 'company_id is required.'], 422);
+        }
+
+        if ($user->isCompanyUser() && $user->company_id !== (int) $companyId) {
+            return response()->json(['message' => 'Unauthorized company.'], 403);
+        }
+
+        $activeWorkerIds = WorkerAssignment::where('company_id', $companyId)
+            ->where('status', WorkerAssignment::STATUS_ACTIVE)
+            ->where('start_date', '<=', today())
+            ->where('end_date', '>=', today())
+            ->pluck('worker_id');
+
+        $workers = Worker::with('vendor')
+            ->whereIn('id', $activeWorkerIds)
+            ->where('status', Worker::STATUS_ACTIVE)
+            ->when($request->search, fn($q, $s) => $q->where('name', 'like', "%{$s}%"))
+            ->orderBy('name')
+            ->get();
+
+        $result = $workers->map(function ($worker) use ($companyId) {
+            $lastLog = AttendanceLog::where('worker_id', $worker->id)
+                ->where('company_id', $companyId)
+                ->where('location_name', AttendanceLog::DEFAULT_LOCATION_NAME)
+                ->today()->valid()
+                ->orderByDesc('marked_at')
+                ->first();
+
+            return [
+                'worker_id'    => $worker->id,
+                'name'         => $worker->name,
+                'photo_url'    => $worker->photo_url,
+                'vendor'       => $worker->vendor?->name,
+                'pending_type' => ($lastLog?->type === 'IN') ? 'OUT' : 'IN',
+            ];
+        });
+
+        return response()->json($result);
+    }
+
+    // ─── Mark attendance ──────────────────────────────────────────────────────
 
     public function mark(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'worker_id'          => 'required|integer|exists:workers,id',
-            'company_id'         => 'required|integer|exists:companies,id',
-            'assignment_id'      => 'nullable|integer|exists:worker_assignments,id',
-            'type'               => 'required|in:IN,OUT',
-            'fingerprint_score'  => 'required|integer|min:0|max:200',
-            'gate'               => 'nullable|string',
-            'device_id'          => 'nullable|string',
+            'worker_id'         => 'required|integer|exists:workers,id',
+            'company_id'        => 'required|integer|exists:companies,id',
+            'assignment_id'     => 'nullable|integer|exists:worker_assignments,id',
+            'type'              => 'required|in:IN,OUT',
+            'method'            => 'required|in:fingerprint,photo,manual,id_card',
+            'fingerprint_score' => 'nullable|integer|min:0|max:200',
+            'override_reason'   => 'nullable|string',
+            'gate'              => 'nullable|string',
+            'device_id'         => 'nullable|string',
+            'location_type'     => 'nullable|in:main_gate,department,checkpoint',
+            'location_name'     => 'nullable|string|max:100',
+            'parent_id'         => 'nullable|integer|exists:attendance_logs,id',
         ]);
 
-        $user = $request->user();
+        $user         = $request->user();
+        $locationName = $data['location_name'] ?? AttendanceLog::DEFAULT_LOCATION_NAME;
 
-        // Business rule validations
-        $errors = $this->validateAttendanceMark(
-            $data['worker_id'],
-            $data['company_id'],
-            $data['type']
-        );
+        $error = $this->validateAttendanceMark($data['worker_id'], $data['company_id'], $data['type'], $locationName);
+        if ($error) {
+            return response()->json(['message' => $error], 422);
+        }
 
-        if ($errors) {
-            return response()->json(['message' => $errors], 422);
+        // Save proof photo if provided (multipart form upload)
+        $authProofPath = null;
+        if ($request->hasFile('photo')) {
+            $request->validate(['photo' => 'image|max:5120|mimes:jpeg,png,jpg']);
+            $authProofPath = $request->file('photo')
+                ->store('attendance/photos/' . today()->format('Y/m/d'), 'private');
         }
 
         $log = AttendanceLog::create([
+            'parent_id'         => $data['parent_id'] ?? null,
             'worker_id'         => $data['worker_id'],
             'company_id'        => $data['company_id'],
             'assignment_id'     => $data['assignment_id'] ?? null,
             'type'              => $data['type'],
             'marked_at'         => now(),
             'marked_by'         => $user->id,
-            'method'            => AttendanceLog::METHOD_FINGERPRINT,
-            'fingerprint_score' => $data['fingerprint_score'],
+            'method'            => $data['method'],
+            'fingerprint_score' => $data['fingerprint_score'] ?? null,
+            'auth_proof_path'   => $authProofPath,
+            'override_reason'   => $data['override_reason'] ?? null,
             'gate'              => $data['gate'] ?? null,
             'device_id'         => $data['device_id'] ?? null,
+            'location_type'     => $data['location_type'] ?? AttendanceLog::LOCATION_MAIN_GATE,
+            'location_name'     => $locationName,
             'ip_address'        => $request->ip(),
             'is_valid'          => true,
         ]);
 
+        $this->lockActiveDeployment($data['worker_id'], $data['company_id']);
+
         $this->audit->log($user->id, 'attendance_marked', AttendanceLog::class, $log->id, [
-            'worker_id' => $data['worker_id'],
-            'type'      => $data['type'],
+            'worker_id'     => $data['worker_id'],
+            'type'          => $data['type'],
+            'method'        => $data['method'],
+            'location_name' => $locationName,
         ]);
 
         return response()->json([
-            'message'   => "Attendance {$data['type']} marked successfully.",
-            'log'       => $log->load('worker:id,name'),
+            'message' => "Attendance {$data['type']} marked at {$locationName}.",
+            'log'     => $log->load('worker:id,name'),
         ], 201);
     }
 
-    // ─── Manual override ──────────────────────────────────────────────────────
+    // ─── Serve proof photo ────────────────────────────────────────────────────
 
-    public function manualMark(Request $request): JsonResponse
+    public function proofPhoto(Request $request, AttendanceLog $log)
     {
-        $data = $request->validate([
-            'worker_id'      => 'required|integer|exists:workers,id',
-            'company_id'     => 'required|integer|exists:companies,id',
-            'type'           => 'required|in:IN,OUT',
-            'marked_at'      => 'required|date',
-            'override_reason' => 'required|string|min:10',
-        ]);
+        abort_unless($log->auth_proof_path, 404);
+        abort_unless(
+            $request->user()->isSuperAdmin() || $request->user()->company_id === $log->company_id,
+            403
+        );
 
-        $user = $request->user();
-
-        // Only admin roles can do manual marks
-        if ($user->role === User::ROLE_COMPANY_GATE) {
-            return response()->json(['message' => 'Gate users cannot manually override attendance.'], 403);
-        }
-
-        $assignment = WorkerAssignment::where('worker_id', $data['worker_id'])
-            ->where('company_id', $data['company_id'])
-            ->whereDate('assignment_date', Carbon::parse($data['marked_at'])->toDateString())
-            ->first();
-
-        $log = AttendanceLog::create([
-            'worker_id'       => $data['worker_id'],
-            'company_id'      => $data['company_id'],
-            'assignment_id'   => $assignment?->id,
-            'type'            => $data['type'],
-            'marked_at'       => $data['marked_at'],
-            'marked_by'       => $user->id,
-            'method'          => AttendanceLog::METHOD_MANUAL,
-            'override_reason' => $data['override_reason'],
-            'ip_address'      => $request->ip(),
-            'is_valid'        => true,
-        ]);
-
-        $this->audit->log($user->id, 'attendance_manual_override', AttendanceLog::class, $log->id, [
-            'reason' => $data['override_reason'],
-        ]);
-
-        return response()->json(['message' => 'Manual attendance recorded.', 'log' => $log], 201);
+        return Storage::disk('private')->response($log->auth_proof_path);
     }
 
-    // ─── Today's attendance ────────────────────────────────────────────────────
+    // ─── Today's attendance ───────────────────────────────────────────────────
 
     public function today(Request $request): JsonResponse
     {
@@ -300,29 +233,28 @@ class AttendanceController extends Controller
         return response()->json($query->get());
     }
 
-    // ─── Worker history ────────────────────────────────────────────────────────
+    // ─── Worker history ───────────────────────────────────────────────────────
 
     public function workerHistory(Request $request, Worker $worker): JsonResponse
     {
         $logs = AttendanceLog::with(['company:id,name', 'markedBy:id,name'])
             ->where('worker_id', $worker->id)
             ->when($request->from, fn($q, $d) => $q->whereDate('marked_at', '>=', $d))
-            ->when($request->to, fn($q, $d) => $q->whereDate('marked_at', '<=', $d))
+            ->when($request->to,   fn($q, $d) => $q->whereDate('marked_at', '<=', $d))
             ->orderByDesc('marked_at')
             ->paginate(30);
 
         return response()->json($logs);
     }
 
-    // ─── Exceptions report ────────────────────────────────────────────────────
+    // ─── Exceptions ───────────────────────────────────────────────────────────
 
     public function exceptions(Request $request): JsonResponse
     {
         $user = $request->user();
         $date = $request->date ?? today()->toDateString();
 
-        // Workers with IN but no OUT today
-        $missingOut = AttendanceLog::select('worker_id', 'company_id')
+        $missingOut = AttendanceLog::select('worker_id', 'company_id', 'location_name')
             ->where('type', AttendanceLog::TYPE_IN)
             ->where('is_valid', true)
             ->whereDate('marked_at', $date)
@@ -331,6 +263,7 @@ class AttendanceController extends Controller
                 $query->from('attendance_logs as out_log')
                     ->whereColumn('out_log.worker_id', 'attendance_logs.worker_id')
                     ->whereColumn('out_log.company_id', 'attendance_logs.company_id')
+                    ->whereColumn('out_log.location_name', 'attendance_logs.location_name')
                     ->where('out_log.type', AttendanceLog::TYPE_OUT)
                     ->where('out_log.is_valid', true)
                     ->whereDate('out_log.marked_at', $date);
@@ -345,7 +278,7 @@ class AttendanceController extends Controller
         ]);
     }
 
-    // ─── Report ────────────────────────────────────────────────────────────────
+    // ─── Report ───────────────────────────────────────────────────────────────
 
     public function report(Request $request): JsonResponse
     {
@@ -355,7 +288,6 @@ class AttendanceController extends Controller
             'from'       => 'required|date',
             'to'         => 'required|date|after_or_equal:from',
             'company_id' => 'nullable|integer',
-            'vendor_id'  => 'nullable|integer',
             'worker_id'  => 'nullable|integer',
         ]);
 
@@ -364,8 +296,8 @@ class AttendanceController extends Controller
             ->whereDate('marked_at', '<=', $request->to)
             ->where('is_valid', true)
             ->when($user->isCompanyUser(), fn($q) => $q->where('company_id', $user->company_id))
-            ->when($request->company_id && $user->isSuperAdmin(), fn($q, $id) => $q->where('company_id', $request->company_id))
-            ->when($request->worker_id, fn($q, $id) => $q->where('worker_id', $id))
+            ->when($request->company_id && $user->isSuperAdmin(), fn($q) => $q->where('company_id', $request->company_id))
+            ->when($request->worker_id, fn($q) => $q->where('worker_id', $request->worker_id))
             ->orderBy('marked_at');
 
         return response()->json($query->paginate(100));
@@ -373,23 +305,35 @@ class AttendanceController extends Controller
 
     // ─── Private helpers ──────────────────────────────────────────────────────
 
-    private function validateAttendanceMark(int $workerId, int $companyId, string $type): ?string
+    private function validateAttendanceMark(int $workerId, int $companyId, string $type, string $locationName): ?string
     {
         $lastLog = AttendanceLog::where('worker_id', $workerId)
             ->where('company_id', $companyId)
+            ->where('location_name', $locationName)
             ->today()
             ->valid()
             ->orderByDesc('marked_at')
             ->first();
 
         if ($type === AttendanceLog::TYPE_IN && $lastLog?->type === AttendanceLog::TYPE_IN) {
-            return 'Worker has already marked IN today. Cannot mark IN again without OUT.';
+            return "Worker already marked IN at '{$locationName}'. Mark OUT first.";
         }
 
-        if ($type === AttendanceLog::TYPE_OUT && (!$lastLog || $lastLog->type === AttendanceLog::TYPE_OUT)) {
-            return 'Cannot mark OUT without a prior IN for today.';
+        if ($type === AttendanceLog::TYPE_OUT && (! $lastLog || $lastLog->type === AttendanceLog::TYPE_OUT)) {
+            return "Cannot mark OUT at '{$locationName}' — no prior IN recorded today.";
         }
 
         return null;
+    }
+
+    private function lockActiveDeployment(int $workerId, int $companyId): void
+    {
+        WorkerAssignment::where('worker_id', $workerId)
+            ->where('company_id', $companyId)
+            ->where('status', WorkerAssignment::STATUS_ACTIVE)
+            ->where('start_date', '<=', today())
+            ->where('end_date', '>=', today())
+            ->where('is_locked', false)
+            ->update(['is_locked' => true]);
     }
 }

@@ -17,16 +17,20 @@ class WorkerAssignment extends Model
         'worker_id',
         'company_id',
         'vendor_id',
-        'assignment_date',
+        'start_date',
+        'end_date',
         'shift',
         'gate',
         'status',
+        'is_locked',
         'assigned_by',
         'notes',
     ];
 
     protected $casts = [
-        'assignment_date' => 'date',
+        'start_date' => 'date',
+        'end_date'   => 'date',
+        'is_locked'  => 'boolean',
     ];
 
     // ─── Relationships ─────────────────────────────────────────────────────────
@@ -60,7 +64,16 @@ class WorkerAssignment extends Model
 
     public function scopeForToday($query)
     {
-        return $query->whereDate('assignment_date', today())->where('status', self::STATUS_ACTIVE);
+        return $query->where('start_date', '<=', today())
+                     ->where('end_date', '>=', today())
+                     ->where('status', self::STATUS_ACTIVE);
+    }
+
+    public function scopeActiveOnDate($query, $date)
+    {
+        return $query->where('start_date', '<=', $date)
+                     ->where('end_date', '>=', $date)
+                     ->where('status', self::STATUS_ACTIVE);
     }
 
     public function scopeForCompany($query, int $companyId)

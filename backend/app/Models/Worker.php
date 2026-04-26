@@ -10,10 +10,10 @@ class Worker extends Model
 {
     use HasFactory, SoftDeletes;
 
-    public const STATUS_PENDING    = 'pending';    // Aadhaar uploaded, not yet complete
-    public const STATUS_ACTIVE     = 'active';     // Aadhaar + fingerprint done
-    public const STATUS_INACTIVE   = 'inactive';
-    public const STATUS_BLOCKED    = 'blocked';
+    public const STATUS_PENDING  = 'pending';  // registered but fingerprint not yet enrolled
+    public const STATUS_ACTIVE   = 'active';   // fingerprint enrolled — ready for attendance
+    public const STATUS_INACTIVE = 'inactive';
+    public const STATUS_BLOCKED  = 'blocked';
 
     protected $fillable = [
         'vendor_id',
@@ -26,14 +26,14 @@ class Worker extends Model
         'pin',
         'phone',
         'mobile',
-        'aadhaar_number_masked',   // last 4 digits only
-        'aadhaar_pdf_path',        // encrypted path
-        'aadhaar_data_extracted',  // json of extracted fields
+        'aadhaar_number_masked',
+        'aadhaar_pdf_path',
+        'aadhaar_data_extracted',
         'photo_path',
-        'fingerprint_template',    // base64 encoded SecuGen FMD
+        'fingerprint_template',
         'fingerprint_enrolled_at',
         'fingerprint_quality',
-        'face_descriptor',         // 128-element float array from face-api.js
+        'face_descriptor',
         'face_enrolled_at',
         'status',
         'notes',
@@ -41,16 +41,16 @@ class Worker extends Model
     ];
 
     protected $hidden = [
-        'aadhaar_pdf_path',        // don't expose path in API responses
-        'fingerprint_template',    // never expose raw template
+        'aadhaar_pdf_path',
+        'fingerprint_template',
     ];
 
     protected $casts = [
-        'dob'                   => 'date',
-        'aadhaar_data_extracted' => 'array',
+        'dob'                    => 'date',
+        'aadhaar_data_extracted'  => 'array',
         'fingerprint_enrolled_at' => 'datetime',
-        'face_descriptor'        => 'array',
-        'face_enrolled_at'       => 'datetime',
+        'face_descriptor'         => 'array',
+        'face_enrolled_at'        => 'datetime',
     ];
 
     // ─── Relationships ─────────────────────────────────────────────────────────
@@ -67,8 +67,20 @@ class Worker extends Model
 
     public function activeAssignments()
     {
-        return $this->assignments()->where('status', 'active')
-            ->whereDate('assignment_date', today());
+        return $this->assignments()
+            ->where('status', WorkerAssignment::STATUS_ACTIVE)
+            ->where('start_date', '<=', today())
+            ->where('end_date', '>=', today());
+    }
+
+    public function idDocuments()
+    {
+        return $this->hasMany(WorkerIdDocument::class);
+    }
+
+    public function primaryIdDocument()
+    {
+        return $this->hasOne(WorkerIdDocument::class)->where('is_primary', true);
     }
 
     public function attendanceLogs()
@@ -95,9 +107,10 @@ class Worker extends Model
         return !empty($this->fingerprint_template);
     }
 
+    // Active = fingerprint enrolled (any ID document is acceptable)
     public function isEnrollmentComplete(): bool
     {
-        return $this->hasFingerprint() && !empty($this->aadhaar_number_masked);
+        return $this->hasFingerprint();
     }
 
     // ─── Scopes ───────────────────────────────────────────────────────────────

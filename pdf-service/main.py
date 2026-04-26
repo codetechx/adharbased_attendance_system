@@ -1,8 +1,6 @@
 """
-AMS — PDF Processing + Face Recognition Microservice
-FastAPI service for:
-  - Aadhaar PDF extraction
-  - Face encoding via InsightFace ArcFace (512-D embeddings)
+AMS — PDF Processing Microservice
+FastAPI service for Aadhaar PDF extraction.
 """
 
 import io
@@ -12,15 +10,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from aadhaar_parser import AadhaarParser
-import face_encoder
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("pdf-service")
 
 app = FastAPI(
-    title="AMS Service",
-    description="Aadhaar PDF extraction + Face recognition service",
-    version="2.0.0",
+    title="AMS PDF Service",
+    description="Aadhaar PDF extraction service",
+    version="2.1.0",
 )
 
 app.add_middleware(
@@ -36,32 +33,6 @@ parser = AadhaarParser()
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "ams-service"}
-
-
-# ── Face Recognition ──────────────────────────────────────────────────────────
-
-@app.post("/face/encode")
-async def encode_face(image: UploadFile = File(...)):
-    """
-    Detect a face in the uploaded image and return its 512-D ArcFace embedding.
-    Returns 422 if no face is detected.
-    """
-    image_bytes = await image.read()
-    if len(image_bytes) > 8 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Image must be under 8 MB.")
-
-    try:
-        descriptor = face_encoder.encode_face(image_bytes)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
-
-    if descriptor is None:
-        raise HTTPException(
-            status_code=422,
-            detail="No face detected in the image. Ensure the face is clearly visible and well-lit.",
-        )
-
-    return {"descriptor": descriptor, "dimensions": len(descriptor)}
 
 
 @app.post("/extract")
