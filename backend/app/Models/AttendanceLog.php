@@ -44,7 +44,8 @@ class AttendanceLog extends Model
         'invalidation_reason',
     ];
 
-    protected $hidden = ['auth_proof_path'];
+    protected $hidden  = ['auth_proof_path'];
+    protected $appends = ['has_proof_photo'];
 
     protected $casts = [
         'marked_at' => 'datetime',

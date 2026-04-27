@@ -1,26 +1,18 @@
 /**
- * AttendanceMark — Fingerprint or Manual IN/OUT with optional photo proof.
+ * In / Out — Fingerprint or Manual with auto-captured photo proof.
  *
- * Fingerprint flow:
- *   1. Scan  →  POST https://localhost:8443/SGIFPCapture
- *   2. Match →  GET /attendance/worker-templates, then SGIMatchScore 1:N
- *   3. Optionally add photo proof
- *   4. Confirm  →  POST /attendance/mark
- *
- * Manual flow:
- *   1. Search/select worker  →  GET /attendance/assigned-workers
- *   2. Optionally add photo proof
- *   3. Confirm  →  POST /attendance/mark
+ * Camera starts on mount and auto-snaps the moment a worker is confirmed
+ * (fingerprint match or manual select). User can retake before submitting.
  */
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import api from "@/lib/axios";
 import { useAuth } from "@/contexts/AuthContext";
 import toast from "react-hot-toast";
 import {
   Fingerprint, Camera, LogIn, LogOut, XCircle, AlertTriangle,
-  RefreshCw, MapPin, Search, User,
+  RefreshCw, MapPin, Search, User, VideoOff,
 } from "lucide-react";
 
 const SGIBIOSRV       = "https://localhost:8443";
@@ -55,6 +47,42 @@ async function sgiMatchScore(t1, t2) {
   return res.json();
 }
 
+// ─── Camera hook ──────────────────────────────────────────────────────────────
+
+function useCamera() {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [ready, setReady] = useState(false);
+  const [denied, setDenied] = useState(false);
+
+  useEffect(() => {
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 480 } } })
+      .then(s => {
+        streamRef.current = s;
+        if (videoRef.current) {
+          videoRef.current.srcObject = s;
+          videoRef.current.onloadedmetadata = () => setReady(true);
+        }
+      })
+      .catch(() => setDenied(true));
+    return () => streamRef.current?.getTracks().forEach(t => t.stop());
+  }, []);
+
+  const snap = () =>
+    new Promise(resolve => {
+      const v = videoRef.current;
+      if (!v || !ready) { resolve(null); return; }
+      const c = document.createElement("canvas");
+      c.width  = v.videoWidth  || 640;
+      c.height = v.videoHeight || 480;
+      c.getContext("2d").drawImage(v, 0, 0);
+      c.toBlob(b => resolve(b), "image/jpeg", 0.85);
+    });
+
+  return { videoRef, ready, denied, snap };
+}
+
 // ─── Location Selector ─────────────────────────────────────────────────────────
 
 function LocationSelector({ locationType, locationName, onTypeChange, onNameChange }) {
@@ -87,13 +115,12 @@ function LocationSelector({ locationType, locationName, onTypeChange, onNameChan
   );
 }
 
-// ─── Confirmed worker card (shared between both modes) ─────────────────────────
+// ─── Confirmed worker card ─────────────────────────────────────────────────────
 
-function ConfirmedCard({ worker, score, photoPreview, onPhotoClick, onConfirm, onCancel, isPending }) {
+function ConfirmedCard({ worker, score, photoPreview, cameraReady, onPhotoAction, onConfirm, onCancel, isPending }) {
   const isIn = worker.pending_type === "IN";
   return (
     <div className={`card border-2 space-y-4 ${isIn ? "border-green-200 bg-green-50" : "border-blue-200 bg-blue-50"}`}>
-      {/* Worker info */}
       <div className="flex items-center gap-4">
         {worker.photo_url ? (
           <img src={worker.photo_url} alt="" className="w-16 h-16 rounded-xl object-cover" />
@@ -115,24 +142,25 @@ function ConfirmedCard({ worker, score, photoPreview, onPhotoClick, onConfirm, o
         </div>
       </div>
 
-      {/* Optional photo proof */}
+      {/* Photo proof */}
       {photoPreview ? (
         <div className="space-y-1">
-          <p className="text-xs text-gray-500 font-medium">Photo proof</p>
-          <img src={photoPreview} alt="proof" className="h-32 w-full object-cover rounded-lg border border-gray-200" />
-          <button type="button" onClick={onPhotoClick} className="text-xs text-brand-600 hover:underline">
-            Retake
+          <p className="text-xs text-gray-500 font-medium">
+            Photo proof <span className="text-green-600">✓ captured</span>
+          </p>
+          <img src={photoPreview} alt="proof" className="h-40 w-full object-cover rounded-lg border border-gray-200" />
+          <button type="button" onClick={onPhotoAction} className="text-xs text-brand-600 hover:underline">
+            {cameraReady ? "Retake" : "Change photo"}
           </button>
         </div>
       ) : (
-        <button type="button" onClick={onPhotoClick} className="btn-secondary w-full text-sm">
+        <button type="button" onClick={onPhotoAction} className="btn-secondary w-full text-sm">
           <Camera size={15} />
-          Add Photo Proof
+          {cameraReady ? "Capture Photo" : "Add Photo Proof"}
           <span className="text-gray-400 font-normal ml-1">(optional)</span>
         </button>
       )}
 
-      {/* Actions */}
       <div className="flex gap-2 pt-1 border-t border-black/5">
         <button
           onClick={onConfirm}
@@ -154,28 +182,32 @@ export default function AttendanceMark() {
   const { user }  = useAuth();
   const companyId = user?.company_id;
   const fileRef   = useRef(null);
+  const camera    = useCamera();
 
-  const [mode, setMode]           = useState("fingerprint"); // "fingerprint" | "manual"
-  const [locationType, setLocType] = useState("main_gate");
-  const [locationName, setLocName] = useState("Main Gate");
+  // Gate users have a fixed location; admins can choose freely
+  const isGateUser   = user?.role === "company_gate";
+  const fixedLocType = user?.location_type ?? "main_gate";
+  const fixedLocName = user?.location_name;
 
-  // Fingerprint-specific state
+  const [mode, setMode]            = useState("fingerprint");
+  const [locationType, setLocType] = useState(fixedLocName ? fixedLocType : "main_gate");
+  const [locationName, setLocName] = useState(fixedLocName ?? "Main Gate");
+
+  // Fingerprint-specific
   const [phase, setPhase]         = useState(PHASE.IDLE);
   const [message, setMessage]     = useState("Click Scan to begin.");
   const [matched, setMatched]     = useState(null);
   const [certError, setCertError] = useState(false);
 
-  // Manual-specific state
-  const [search, setSearch]       = useState("");
-  const [selectedWorker, setSel]  = useState(null);
+  // Manual-specific
+  const [search, setSearch]      = useState("");
+  const [selectedWorker, setSel] = useState(null);
 
   // Shared proof photo
-  const [photoFile, setPhotoFile] = useState(null);
+  const [photoFile, setPhotoFile]   = useState(null);
   const [photoPreview, setPhotoPrev] = useState(null);
 
-  // Whichever worker is confirmed (from either mode)
   const confirmedWorker = matched || selectedWorker;
-
   const resolvedLocation = locationType === "main_gate" ? "Main Gate" : (locationName || "");
 
   const { data: assignedWorkers } = useQuery({
@@ -191,7 +223,25 @@ export default function AttendanceMark() {
     setLocName(val === "main_gate" ? "Main Gate" : "");
   };
 
-  const handlePhotoChange = (e) => {
+  // ── Camera snap helpers ───────────────────────────────────────────────────
+
+  const autoSnap = async () => {
+    const blob = await camera.snap();
+    if (blob) {
+      setPhotoFile(blob);
+      setPhotoPrev(URL.createObjectURL(blob));
+    }
+  };
+
+  const handlePhotoAction = async () => {
+    if (camera.ready) {
+      await autoSnap();
+    } else {
+      fileRef.current?.click();
+    }
+  };
+
+  const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setPhotoFile(file);
@@ -263,6 +313,14 @@ export default function AttendanceMark() {
     setMatched({ ...best.worker, score: best.score });
     setPhase(PHASE.CONFIRMED);
     setMessage("Worker identified!");
+    await autoSnap(); // auto-capture photo at the moment of match
+  };
+
+  // ── Manual select ─────────────────────────────────────────────────────────
+
+  const handleWorkerSelect = async (w) => {
+    setSel(w);
+    await autoSnap(); // auto-capture when worker is selected
   };
 
   // ── Mark (unified) ────────────────────────────────────────────────────────
@@ -335,16 +393,56 @@ export default function AttendanceMark() {
   return (
     <div className="max-w-lg mx-auto space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Attendance Mark</h1>
-        <p className="text-gray-500 text-sm mt-1">Mark worker IN/OUT at this location</p>
+        <h1 className="text-2xl font-bold text-gray-900">In / Out</h1>
+        <p className="text-gray-500 text-sm mt-1">Mark worker IN/OUT — photo captured automatically</p>
       </div>
 
-      <LocationSelector
-        locationType={locationType}
-        locationName={locationName}
-        onTypeChange={handleLocTypeChange}
-        onNameChange={setLocName}
-      />
+      {/* Location */}
+      {isGateUser && fixedLocName ? (
+        <div className="card flex items-center gap-3 py-3">
+          <MapPin size={16} className="text-brand-500 shrink-0" />
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Marking at</p>
+            <p className="text-sm font-semibold text-gray-800">{fixedLocName}</p>
+          </div>
+        </div>
+      ) : (
+        <LocationSelector
+          locationType={locationType}
+          locationName={locationName}
+          onTypeChange={handleLocTypeChange}
+          onNameChange={setLocName}
+        />
+      )}
+
+      {/* Camera preview — shown while not yet confirmed */}
+      {!confirmedWorker && (
+        <div className="card p-0 overflow-hidden rounded-xl">
+          {camera.denied ? (
+            <div className="flex items-center gap-2 px-4 py-3 text-xs text-amber-700 bg-amber-50">
+              <VideoOff size={14} />
+              Camera not available — photo proof can be uploaded manually
+            </div>
+          ) : (
+            <div className="relative bg-gray-900">
+              <video
+                ref={camera.videoRef}
+                autoPlay
+                muted
+                playsInline
+                className="w-full h-48 object-cover"
+              />
+              <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-0.5 bg-black/50 rounded-full">
+                <span className={`w-2 h-2 rounded-full ${camera.ready ? "bg-green-400 animate-pulse" : "bg-gray-400"}`} />
+                <span className="text-xs text-white">{camera.ready ? "Live" : "Starting…"}</span>
+              </div>
+              <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/50 rounded text-xs text-gray-300">
+                Point camera at worker
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Mode toggle */}
       <div className="flex rounded-lg border border-gray-200 overflow-hidden">
@@ -364,23 +462,23 @@ export default function AttendanceMark() {
         ))}
       </div>
 
-      {/* Hidden photo input — used by both modes */}
+      {/* Hidden file input — fallback when camera unavailable */}
       <input
         ref={fileRef}
         type="file"
         accept="image/*"
         capture="environment"
-        onChange={handlePhotoChange}
+        onChange={handleFileChange}
         className="hidden"
       />
 
-      {/* ── FINGERPRINT: scan UI (only while not yet confirmed) ── */}
+      {/* ── FINGERPRINT: scan UI ── */}
       {mode === "fingerprint" && !confirmedWorker && (
-        <div className="card flex flex-col items-center space-y-5 py-10">
-          <div className={`w-40 h-40 rounded-full border-4 ${ringColor} flex items-center justify-center bg-gray-50 transition-all`}>
+        <div className="card flex flex-col items-center space-y-5 py-8">
+          <div className={`w-32 h-32 rounded-full border-4 ${ringColor} flex items-center justify-center bg-gray-50 transition-all`}>
             {phase === PHASE.ERROR
-              ? <XCircle className="w-20 h-20 text-red-400" />
-              : <Fingerprint className={`w-20 h-20 ${phase === PHASE.IDLE ? "text-gray-200" : "text-brand-400"}`} />
+              ? <XCircle className="w-16 h-16 text-red-400" />
+              : <Fingerprint className={`w-16 h-16 ${phase === PHASE.IDLE ? "text-gray-200" : "text-brand-400"}`} />
             }
           </div>
 
@@ -439,7 +537,7 @@ export default function AttendanceMark() {
             {assignedWorkers?.map(w => (
               <button
                 key={w.worker_id}
-                onClick={() => setSel(w)}
+                onClick={() => handleWorkerSelect(w)}
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-brand-50 text-left"
               >
                 {w.photo_url ? (
@@ -462,13 +560,14 @@ export default function AttendanceMark() {
         </div>
       )}
 
-      {/* ── CONFIRMED WORKER — same card for both modes ── */}
+      {/* ── CONFIRMED WORKER ── */}
       {confirmedWorker && (
         <ConfirmedCard
           worker={confirmedWorker}
           score={matched?.score}
           photoPreview={photoPreview}
-          onPhotoClick={() => fileRef.current?.click()}
+          cameraReady={camera.ready}
+          onPhotoAction={handlePhotoAction}
           onConfirm={handleMark}
           onCancel={reset}
           isPending={markMutation.isPending}

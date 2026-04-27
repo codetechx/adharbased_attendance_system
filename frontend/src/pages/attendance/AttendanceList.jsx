@@ -1,64 +1,69 @@
 import { useState } from "react";
-import PropTypes from "prop-types";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import api from "@/lib/axios";
-import { format } from "date-fns";
-import { LogIn, LogOut, Fingerprint, Camera, Shield, MapPin, Image } from "lucide-react";
+import { format, differenceInMinutes } from "date-fns";
+import { LogIn, LogOut, MapPin, Building2, Search } from "lucide-react";
 
-const METHOD_BADGE = {
-  fingerprint: { label: "Fingerprint", icon: Fingerprint, cls: "badge-green" },
-  photo:       { label: "Photo",       icon: Camera,      cls: "badge-blue" },
-  id_card:     { label: "ID Card",     icon: Shield,      cls: "badge-purple" },
-  manual:      { label: "Manual",      icon: Shield,      cls: "badge-yellow" },
-};
+const SKELETON_KEYS = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
-const SKELETON_KEYS = ["sk-a","sk-b","sk-c","sk-d","sk-e","sk-f","sk-g","sk-h"];
-
-function MethodBadge({ method }) {
-  const cfg  = METHOD_BADGE[method] ?? METHOD_BADGE.manual;
-  const Icon = cfg.icon;
-  return (
-    <span className={`badge ${cfg.cls} text-xs`}>
-      <Icon size={10} className="mr-1" />{cfg.label}
-    </span>
-  );
+function duration(firstIn, lastOut) {
+  if (!firstIn || !lastOut) return null;
+  const mins = differenceInMinutes(new Date(lastOut), new Date(firstIn));
+  if (mins < 0) return null;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
 }
-
-MethodBadge.propTypes = {
-  method: PropTypes.string.isRequired,
-};
-
-function TypeBadge({ type }) {
-  const isIn = type === "IN";
-  const Icon = isIn ? LogIn : LogOut;
-  return (
-    <span className={`badge ${isIn ? "badge-green" : "badge-blue"}`}>
-      <Icon size={10} className="mr-1" />{type}
-    </span>
-  );
-}
-
-TypeBadge.propTypes = {
-  type: PropTypes.string.isRequired,
-};
 
 export default function AttendanceList() {
-  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [type, setType] = useState("");
-  const [page, setPage] = useState(1);
+  const navigate = useNavigate();
+  const [date, setDate]     = useState(format(new Date(), "yyyy-MM-dd"));
+  const [search, setSearch] = useState("");
+  const [page, setPage]     = useState(1);
+  const [tab, setTab]       = useState("all"); // all | current | previous
+
+  const deploymentParam = tab !== "all" ? tab : undefined;
 
   const { data, isLoading } = useQuery({
-    queryKey: ["attendance", date, type, page],
-    queryFn:  () => api.get("/attendance", { params: { date, type, page } }).then(r => r.data),
+    queryKey: ["attendance-daily", date, search, page, tab],
+    queryFn:  () =>
+      api.get("/attendance/daily-summary", {
+        params: { date, search: search || undefined, page, deployment: deploymentParam },
+      }).then((r) => r.data),
   });
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Attendance Log</h1>
-        <p className="text-sm text-gray-500 mt-0.5">All attendance records</p>
+        <p className="text-sm text-gray-500 mt-0.5">Daily summary — one row per worker</p>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {[
+          { key: "all",      label: "All" },
+          { key: "current",  label: "Current Workers" },
+          { key: "previous", label: "Previous Workers" },
+        ].map((t) => (
+          <button
+            key={t.key}
+            onClick={() => { setTab(t.key); setPage(1); }}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              tab === t.key
+                ? "border-brand-500 text-brand-700"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <input
           type="date"
@@ -66,84 +71,155 @@ export default function AttendanceList() {
           onChange={(e) => { setDate(e.target.value); setPage(1); }}
           className="input w-auto"
         />
-        <select
-          value={type}
-          onChange={(e) => { setType(e.target.value); setPage(1); }}
-          className="input w-auto"
-        >
-          <option value="">All Types</option>
-          <option value="IN">IN</option>
-          <option value="OUT">OUT</option>
-        </select>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+          <input
+            type="text"
+            placeholder="Search worker..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="input pl-9 w-52"
+          />
+        </div>
       </div>
 
+      {/* Table */}
       <div className="card p-0 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
               <th className="text-left px-5 py-3 font-medium text-gray-500">Worker</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500 hidden lg:table-cell">Company</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500 hidden md:table-cell">Location</th>
-              <th className="text-center px-4 py-3 font-medium text-gray-500">Type</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Time</th>
-              <th className="text-center px-4 py-3 font-medium text-gray-500 hidden sm:table-cell">Auth</th>
-              <th className="text-center px-4 py-3 font-medium text-gray-500 hidden sm:table-cell">Proof</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500 hidden lg:table-cell">
+                <span className="flex items-center gap-1"><Building2 size={13} />Company</span>
+              </th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500 hidden md:table-cell">
+                <span className="flex items-center gap-1"><MapPin size={13} />Location</span>
+              </th>
+              <th className="text-center px-4 py-3 font-medium text-gray-500">
+                <span className="flex items-center justify-center gap-1"><LogIn size={13} />First IN</span>
+              </th>
+              <th className="text-center px-4 py-3 font-medium text-gray-500 hidden sm:table-cell">
+                <span className="flex items-center justify-center gap-1"><LogOut size={13} />Last OUT</span>
+              </th>
+              <th className="text-center px-4 py-3 font-medium text-gray-500 hidden sm:table-cell">Duration</th>
+              <th className="text-center px-4 py-3 font-medium text-gray-500">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {isLoading && SKELETON_KEYS.map((key) => (
-              <tr key={key}>
+            {isLoading && SKELETON_KEYS.map((k) => (
+              <tr key={k}>
                 <td colSpan={7} className="py-3 px-5">
                   <div className="h-4 bg-gray-100 rounded animate-pulse w-3/4" />
                 </td>
               </tr>
             ))}
+
             {!isLoading && data?.data?.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-gray-400">No records for this date.</td>
+                <td colSpan={7} className="text-center py-12 text-gray-400">
+                  No attendance records for this date.
+                </td>
               </tr>
             )}
-            {!isLoading && data?.data?.map((log) => (
-              <tr key={log.id} className="hover:bg-gray-50/50">
-                <td className="px-5 py-3 font-medium text-gray-900">{log.worker?.name}</td>
-                <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">{log.company?.name}</td>
-                <td className="px-4 py-3 hidden md:table-cell">
-                  {log.location_name && (
-                    <span className="flex items-center gap-1 text-gray-500 text-xs">
-                      <MapPin size={11} className="text-gray-400" />
-                      {log.location_name}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <TypeBadge type={log.type} />
-                </td>
-                <td className="px-4 py-3 text-gray-600">
-                  {format(new Date(log.marked_at), "hh:mm:ss a")}
-                </td>
-                <td className="px-4 py-3 text-center hidden sm:table-cell">
-                  <MethodBadge method={log.method} />
-                </td>
-                <td className="px-4 py-3 text-center hidden sm:table-cell">
-                  {log.has_proof_photo ? (
-                    <span title="Photo proof captured" className="inline-flex">
-                      <Image size={15} className="text-brand-500" />
-                    </span>
-                  ) : (
-                    <span className="text-gray-300 text-xs">—</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+
+            {!isLoading && data?.data?.map((row) => {
+              const stillInside  = row.first_in && !row.last_out;
+              const missedOut    = row.in_count > row.out_count && row.last_out;
+              const dur          = duration(row.first_in, row.last_out);
+
+              return (
+                <tr
+                  key={`${row.worker_id}-${row.work_date}`}
+                  onClick={() => navigate(`/workers/${row.worker_id}`)}
+                  className="hover:bg-gray-50/50 transition-colors cursor-pointer"
+                >
+                  {/* Worker */}
+                  <td className="px-5 py-3">
+                    <p className="font-medium text-gray-900 leading-tight">{row.worker_name}</p>
+                    {row.vendor_name && (
+                      <p className="text-xs text-gray-400 mt-0.5">{row.vendor_name}</p>
+                    )}
+                  </td>
+
+                  {/* Company */}
+                  <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
+                    {row.company_name ?? <span className="text-gray-300">—</span>}
+                  </td>
+
+                  {/* Location(s) */}
+                  <td className="px-4 py-3 hidden md:table-cell">
+                    {row.locations ? (
+                      <p className="text-gray-700 text-xs leading-relaxed">{row.locations}</p>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
+
+                  {/* First IN */}
+                  <td className="px-4 py-3 text-center whitespace-nowrap">
+                    {row.first_in ? (
+                      <span className="text-green-700 font-medium">
+                        {format(new Date(row.first_in), "hh:mm a")}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
+
+                  {/* Last OUT */}
+                  <td className="px-4 py-3 text-center whitespace-nowrap hidden sm:table-cell">
+                    {row.last_out ? (
+                      <span className="text-blue-700 font-medium">
+                        {format(new Date(row.last_out), "hh:mm a")}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
+
+                  {/* Duration */}
+                  <td className="px-4 py-3 text-center hidden sm:table-cell">
+                    {dur ? (
+                      <span className="text-gray-700 font-medium">{dur}</span>
+                    ) : stillInside ? (
+                      <span className="text-xs text-gray-400 italic">ongoing</span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
+
+                  {/* Status */}
+                  <td className="px-4 py-3 text-center">
+                    {stillInside ? (
+                      <span className="badge badge-green text-xs">Inside</span>
+                    ) : missedOut ? (
+                      <span className="badge badge-yellow text-xs">Incomplete</span>
+                    ) : (
+                      <span className="badge badge-gray text-xs">Done</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
         {data?.last_page > 1 && (
           <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100">
-            <p className="text-xs text-gray-500">Showing {data.from}–{data.to} of {data.total}</p>
+            <p className="text-xs text-gray-500">
+              Showing {data.from}–{data.to} of {data.total}
+            </p>
             <div className="flex gap-2">
-              <button onClick={() => setPage(p => Math.max(p - 1, 1))} disabled={page === 1} className="btn-secondary py-1 text-xs">Prev</button>
-              <button onClick={() => setPage(p => p + 1)} disabled={page === data.last_page} className="btn-secondary py-1 text-xs">Next</button>
+              <button
+                onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                disabled={page === 1}
+                className="btn-secondary py-1 text-xs"
+              >Prev</button>
+              <button
+                onClick={() => setPage((p) => p + 1)}
+                disabled={page === data.last_page}
+                className="btn-secondary py-1 text-xs"
+              >Next</button>
             </div>
           </div>
         )}

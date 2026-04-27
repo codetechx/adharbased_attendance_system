@@ -11,9 +11,111 @@ import FingerprintCapture from "@/components/FingerprintCapture";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CheckCircle, ChevronRight, User, CreditCard, Fingerprint,
-  Upload, Camera, FileText, RefreshCw, AlertCircle,
+  Upload, Camera, FileText, RefreshCw, AlertCircle, VideoOff, Download,
 } from "lucide-react";
 import { format } from "date-fns";
+
+// ─── LivePhotoCapture ─────────────────────────────────────────────────────────
+// Self-contained webcam component. Starts camera on mount, stops on unmount.
+
+function LivePhotoCapture({ onCapture, initialPreview }) {
+  const videoRef  = useRef(null);
+  const streamRef = useRef(null);
+  const fileRef   = useRef(null);
+  const [ready,   setReady]   = useState(false);
+  const [denied,  setDenied]  = useState(false);
+  const [preview, setPreview] = useState(initialPreview ?? null);
+
+  useEffect(() => {
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } })
+      .then(s => {
+        streamRef.current = s;
+        if (videoRef.current) {
+          videoRef.current.srcObject = s;
+          videoRef.current.onloadedmetadata = () => setReady(true);
+        }
+      })
+      .catch(() => setDenied(true));
+    return () => streamRef.current?.getTracks().forEach(t => t.stop());
+  }, []);
+
+  const capture = () => {
+    const v = videoRef.current;
+    if (!v || !ready) return;
+    const canvas = document.createElement("canvas");
+    canvas.width  = v.videoWidth  || 640;
+    canvas.height = v.videoHeight || 480;
+    canvas.getContext("2d").drawImage(v, 0, 0);
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      setPreview(url);
+      onCapture(blob, url);
+    }, "image/jpeg", 0.85);
+  };
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    onCapture(file, url);
+  };
+
+  return (
+    <div className="space-y-2">
+      {!preview && (
+        <div className="relative rounded-xl overflow-hidden bg-gray-900" style={{ aspectRatio: "4/3" }}>
+          {denied ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white">
+              <VideoOff size={24} className="text-gray-400" />
+              <span className="text-sm text-gray-300">Camera not available</span>
+            </div>
+          ) : (
+            <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          )}
+          <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-0.5 bg-black/50 rounded-full">
+            <span className={`w-1.5 h-1.5 rounded-full ${ready ? "bg-green-400 animate-pulse" : "bg-gray-400"}`} />
+            <span className="text-xs text-white">{ready ? "Live" : denied ? "No camera" : "Starting…"}</span>
+          </div>
+        </div>
+      )}
+
+      {preview && (
+        <div className="relative rounded-xl overflow-hidden" style={{ aspectRatio: "4/3" }}>
+          <img src={preview} alt="Live photo" className="w-full h-full object-cover" />
+          <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/50 rounded-full text-xs text-white">
+            Captured
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        {!denied && !preview && (
+          <button type="button" onClick={capture} disabled={!ready}
+            className="btn-primary flex-1 justify-center text-sm">
+            <Camera size={14} /> {ready ? "Capture Photo" : "Starting camera…"}
+          </button>
+        )}
+        {preview && (
+          <button type="button" onClick={() => setPreview(null)}
+            className="btn-secondary flex-1 justify-center text-sm">
+            <RefreshCw size={14} /> Retake
+          </button>
+        )}
+        {(denied || preview) && (
+          <>
+            <button type="button" onClick={() => fileRef.current?.click()}
+              className="btn-secondary flex-1 justify-center text-sm">
+              <Upload size={14} /> {preview ? "Upload instead" : "Upload Photo"}
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -70,8 +172,7 @@ export default function WorkerRegister() {
   const isEdit      = !!workerId;
   const needsVendor = ["super_admin", "company_admin"].includes(user?.role);
 
-  const docFileRef   = useRef(null);
-  const photoFileRef = useRef(null);
+  const docFileRef = useRef(null);
 
   // ── wizard state ─────────────────────────────────────────────────────────
   const [step, setStep]             = useState(0);
@@ -88,8 +189,10 @@ export default function WorkerRegister() {
   const [reEnrollFP, setReEnrollFP] = useState(false); // edit: toggle to re-enroll
 
   // Step 3
-  const [photoFile, setPhotoFile]           = useState(null);
-  const [photoPreview, setPhotoPreview]     = useState(null);
+  const [photoFile, setPhotoFile]           = useState(null);   // live capture blob/File
+  const [photoPreview, setPhotoPreview]     = useState(null);   // live photo preview URL
+  const [aadhaarPhoto, setAadhaarPhoto]     = useState(null);   // base64 from Aadhaar card
+  const [rephoto, setRephoto]               = useState(false);  // edit: retake live photo
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   // Shared
@@ -105,6 +208,24 @@ export default function WorkerRegister() {
     queryFn:  () => api.get("/vendors?per_page=100").then(r => r.data?.data ?? r.data),
     enabled:  needsVendor,
   });
+
+  // ── Download ID document ─────────────────────────────────────────────────
+
+  const downloadDoc = async (wId, docId, workerName, typeLabel) => {
+    try {
+      const r = await api.get(`/workers/${wId}/id-documents/${docId}/download`, { responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${workerName}_${typeLabel}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Could not download document.");
+    }
+  };
 
   // ── Edit: fetch existing worker ───────────────────────────────────────────
 
@@ -164,8 +285,7 @@ export default function WorkerRegister() {
     if (data.pin)                  setValue("pin", data.pin ?? "");
     if (data.mobile || data.phone) setValue("phone", data.mobile ?? data.phone ?? "");
     if (data.photo_base64) {
-      setPhotoFile(base64ToFile(data.photo_base64, "aadhaar_photo.png"));
-      setPhotoPreview(`data:image/png;base64,${data.photo_base64}`);
+      setAadhaarPhoto(data.photo_base64); // store as reference; live photo captured in step 3
     }
     setStep(1);
     toast.success("Aadhaar data auto-filled. Please review before saving.");
@@ -245,11 +365,9 @@ export default function WorkerRegister() {
 
   // ── Step 3: photo ─────────────────────────────────────────────────────────
 
-  const handlePhotoChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+  const handleLiveCapture = (blob, url) => {
+    setPhotoFile(blob);
+    setPhotoPreview(url);
   };
 
   const handlePhotoContinue = async () => {
@@ -289,8 +407,8 @@ export default function WorkerRegister() {
   }
 
   // Existing primary doc (for step 0 edit view)
-  const primaryDoc = existingWorker?.idDocuments?.find(d => d.is_primary)
-                  ?? existingWorker?.idDocuments?.[0];
+  const primaryDoc = existingWorker?.id_documents?.find(d => d.is_primary)
+                  ?? existingWorker?.id_documents?.[0];
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -347,13 +465,51 @@ export default function WorkerRegister() {
                     {primaryDoc.id_number_masked && (
                       <p className="text-sm text-gray-500 font-mono mt-0.5">{primaryDoc.id_number_masked}</p>
                     )}
-                    <div className="flex items-center gap-2 mt-2">
-                      {primaryDoc.has_document ? (
-                        <span className="badge badge-green text-xs">
-                          <FileText size={10} className="mr-1" /> Document on file
-                        </span>
-                      ) : (
-                        <span className="badge badge-gray text-xs">No document file</span>
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      {/* Aadhaar PDF (stored separately via Aadhaar upload) */}
+                      {primaryDoc.id_type === "aadhaar" && existingWorker.has_aadhaar_pdf && (
+                        <>
+                          <span className="badge badge-green text-xs">
+                            <FileText size={10} className="mr-1" /> Aadhaar PDF on file
+                          </span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const r = await api.get(`/aadhaar/download/${workerId}`, { responseType: "blob" });
+                                const url = URL.createObjectURL(r.data);
+                                const a = document.createElement("a");
+                                a.href = url; a.download = `${existingWorker.name}_Aadhaar.pdf`;
+                                document.body.appendChild(a); a.click();
+                                document.body.removeChild(a); URL.revokeObjectURL(url);
+                              } catch { toast.error("Could not download Aadhaar PDF."); }
+                            }}
+                            className="badge badge-blue text-xs cursor-pointer hover:opacity-80"
+                          >
+                            <Download size={10} className="mr-1" /> Download PDF
+                          </button>
+                        </>
+                      )}
+                      {/* Other ID document file */}
+                      {primaryDoc.id_type !== "aadhaar" && primaryDoc.has_document && (
+                        <>
+                          <span className="badge badge-green text-xs">
+                            <FileText size={10} className="mr-1" /> Document on file
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => downloadDoc(workerId, primaryDoc.id, existingWorker.name, primaryDoc.type_label)}
+                            className="badge badge-blue text-xs cursor-pointer hover:opacity-80"
+                          >
+                            <Download size={10} className="mr-1" /> Download
+                          </button>
+                        </>
+                      )}
+                      {primaryDoc.id_type === "aadhaar" && !existingWorker.has_aadhaar_pdf && (
+                        <span className="badge badge-gray text-xs">No PDF uploaded</span>
+                      )}
+                      {primaryDoc.id_type !== "aadhaar" && !primaryDoc.has_document && (
+                        <span className="badge badge-gray text-xs">No file uploaded</span>
                       )}
                     </div>
                   </div>
@@ -371,7 +527,7 @@ export default function WorkerRegister() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setChangeDoc(true); setAadhaar(null); setIdNumber(""); setIdFile(null); }}
+                  onClick={() => { setChangeDoc(true); setAadhaar(null); setIdNumber(""); setIdFile(null); setAadhaarPhoto(null); }}
                   className="btn-secondary"
                 >
                   <RefreshCw size={14} /> Change Document
@@ -395,8 +551,9 @@ export default function WorkerRegister() {
                         setIdNumber("");
                         setIdFile(null);
                         setAadhaar(null);
+                        setAadhaarPhoto(null);
                         setPhotoFile(null);
-                        setPhotoPreview(isEdit ? existingWorker?.photo_url ?? null : null);
+                        setPhotoPreview(null);
                       }}
                       className={`px-3 py-2.5 rounded-lg border text-sm font-medium text-left transition-colors ${
                         idType === t.value
@@ -610,53 +767,66 @@ export default function WorkerRegister() {
 
       {/* ── Step 3: Photo ─────────────────────────────────────────────────────── */}
       {step === 3 && savedWorker && (
-        <div className="card space-y-6">
+        <div className="card space-y-5">
           <div>
-            <h2 className="font-semibold text-gray-900">Worker Photo</h2>
+            <h2 className="font-semibold text-gray-900">Worker Photos</h2>
             <p className="text-sm text-gray-500 mt-0.5">
-              {isEdit && existingWorker?.photo_url
-                ? "Existing photo shown. Select a new one to replace it, or continue to keep the current."
-                : "A face photo helps gate staff visually verify the worker."}
+              ID photo is from the identity document. Live photo is captured now for gate verification.
             </p>
           </div>
 
-          <div className="flex flex-col items-center gap-3">
-            <button
-              type="button"
-              onClick={() => photoFileRef.current?.click()}
-              title={photoPreview ? "Change photo" : "Add worker photo"}
-              className="w-40 h-48 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50
-                         flex items-center justify-center overflow-hidden
-                         hover:border-brand-400 hover:bg-brand-50 transition-colors"
-            >
-              {photoPreview ? (
-                <img src={photoPreview} alt="Worker" className="w-full h-full object-cover" />
-              ) : (
-                <div className="flex flex-col items-center text-gray-400 gap-2 px-4 text-center">
-                  <Camera size={32} />
-                  <span className="text-sm leading-tight">Tap to take or upload photo</span>
+          <div className="grid grid-cols-2 gap-4">
+            {/* Left: ID Photo */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+                <CreditCard size={12} /> ID Photo
+              </p>
+              <div className="rounded-xl overflow-hidden bg-gray-100 border border-gray-200" style={{ aspectRatio: "3/4" }}>
+                {aadhaarPhoto ? (
+                  <img
+                    src={`data:image/png;base64,${aadhaarPhoto}`}
+                    alt="ID photo"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 gap-2 px-3 text-center">
+                    <CreditCard size={24} />
+                    <span className="text-xs">
+                      {idType === "aadhaar" ? "No photo in ID" : "Not available for this ID type"}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 text-center">From {ID_TYPES.find(t => t.value === idType)?.label}</p>
+            </div>
+
+            {/* Right: Live Photo */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+                <Camera size={12} /> Live Photo
+              </p>
+
+              {/* Edit: show existing photo unless rephoto triggered */}
+              {isEdit && existingWorker?.photo_url && !rephoto ? (
+                <div className="space-y-2">
+                  <div className="rounded-xl overflow-hidden border border-green-200" style={{ aspectRatio: "3/4" }}>
+                    <img src={existingWorker.photo_url} alt="Current" className="w-full h-full object-cover" />
+                  </div>
+                  <button type="button" onClick={() => setRephoto(true)}
+                    className="btn-secondary w-full text-xs justify-center">
+                    <RefreshCw size={12} /> Retake
+                  </button>
                 </div>
+              ) : (
+                <LivePhotoCapture
+                  key={rephoto ? "retake" : "initial"}
+                  onCapture={handleLiveCapture}
+                  initialPreview={!isEdit ? photoPreview : null}
+                />
               )}
-            </button>
 
-            {photoPreview && (
-              <button
-                type="button"
-                onClick={() => photoFileRef.current?.click()}
-                className="text-sm text-brand-600 hover:underline"
-              >
-                Change Photo
-              </button>
-            )}
-
-            <input
-              ref={photoFileRef}
-              type="file"
-              accept="image/*"
-              capture="user"
-              onChange={handlePhotoChange}
-              className="hidden"
-            />
+              <p className="text-xs text-gray-400 text-center">Captured at registration</p>
+            </div>
           </div>
 
           <div className="flex gap-3 pt-2 border-t border-gray-100">
@@ -667,7 +837,7 @@ export default function WorkerRegister() {
               disabled={uploadingPhoto}
               className="btn-primary"
             >
-              {uploadingPhoto ? "Uploading..." : photoFile ? "Save Photo & Continue" : "Keep & Continue"}
+              {uploadingPhoto ? "Uploading…" : photoFile ? "Save Photo & Continue" : "Skip & Continue"}
             </button>
           </div>
         </div>
@@ -676,14 +846,28 @@ export default function WorkerRegister() {
       {/* ── Step 4: Confirm ───────────────────────────────────────────────────── */}
       {step === 4 && savedWorker && (
         <div className="card text-center space-y-4">
-          <div className="flex justify-center">
+          {/* Photos side-by-side */}
+          <div className="flex gap-3 justify-center">
+            {aadhaarPhoto && (
+              <div className="text-center space-y-1">
+                <img
+                  src={`data:image/png;base64,${aadhaarPhoto}`}
+                  alt="ID"
+                  className="w-20 h-24 rounded-xl object-cover border-2 border-gray-200 shadow"
+                />
+                <p className="text-xs text-gray-400">ID Photo</p>
+              </div>
+            )}
             {photoPreview ? (
-              <img
-                src={photoPreview}
-                alt={savedWorker.name}
-                className="w-24 h-28 rounded-xl object-cover border-4 border-green-200 shadow"
-              />
-            ) : (
+              <div className="text-center space-y-1">
+                <img
+                  src={photoPreview}
+                  alt={savedWorker.name}
+                  className="w-20 h-24 rounded-xl object-cover border-2 border-green-200 shadow"
+                />
+                <p className="text-xs text-gray-400">Live Photo</p>
+              </div>
+            ) : !aadhaarPhoto && (
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
                 <CheckCircle className="w-10 h-10 text-green-600" />
               </div>
@@ -703,8 +887,8 @@ export default function WorkerRegister() {
               {idType !== "aadhaar" && idNumber ? ` — ${idNumber}` : ""}
             </p>
             {photoPreview
-              ? <p className="text-green-600">✓ Photo {isEdit && !photoFile ? "(unchanged)" : "saved"}</p>
-              : <p className="text-amber-500">⚠ No photo — can be added later from the worker list</p>
+              ? <p className="text-green-600">✓ Live photo {isEdit && !photoFile ? "(unchanged)" : "saved"}</p>
+              : <p className="text-amber-500">⚠ No live photo — can be added later from the worker list</p>
             }
             {fingerprint
               ? <p className="text-green-600 font-medium">✓ Fingerprint enrolled (quality: {fingerprint.quality}%)</p>

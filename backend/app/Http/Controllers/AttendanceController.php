@@ -14,12 +14,76 @@ class AttendanceController extends Controller
 {
     public function __construct(private AuditService $audit) {}
 
+    // ─── Daily summary (one row per worker per day) ───────────────────────────
+
+    public function dailySummary(Request $request): JsonResponse
+    {
+        $user      = $request->user();
+        $companyId = $user->isCompanyUser() ? $user->company_id : null;
+
+        $rows = \DB::table('attendance_logs as al')
+            ->join('workers as w',      'w.id',  '=', 'al.worker_id')
+            ->leftJoin('vendors as v',   'v.id',  '=', 'w.vendor_id')
+            ->leftJoin('companies as c', 'c.id',  '=', 'al.company_id')
+            ->selectRaw("
+                al.worker_id,
+                al.company_id,
+                w.name                                                          as worker_name,
+                v.name                                                          as vendor_name,
+                c.name                                                          as company_name,
+                DATE(al.marked_at)                                              as work_date,
+                MIN(CASE WHEN al.type='IN'  THEN al.marked_at ELSE NULL END)    as first_in,
+                MAX(CASE WHEN al.type='OUT' THEN al.marked_at ELSE NULL END)    as last_out,
+                COUNT(*)                                                        as total_events,
+                SUM(CASE WHEN al.type='IN'  THEN 1 ELSE 0 END)                 as in_count,
+                SUM(CASE WHEN al.type='OUT' THEN 1 ELSE 0 END)                 as out_count,
+                GROUP_CONCAT(DISTINCT al.location_name SEPARATOR ', ')          as locations
+            ")
+            ->when($companyId,               fn($q) => $q->where('al.company_id', $companyId))
+            ->when($user->isVendorUser(),    fn($q) => $q->where('w.vendor_id', $user->vendor_id))
+            ->when($request->date,           fn($q, $d) => $q->whereDate('al.marked_at', $d))
+            ->when($request->search,         fn($q, $s) => $q->where('w.name', 'like', "%{$s}%"))
+            ->when($request->deployment === 'current', fn($q) =>
+                $q->whereExists(function ($sub) use ($companyId) {
+                    $sub->from('worker_assignments')
+                        ->whereColumn('worker_assignments.worker_id', 'al.worker_id')
+                        ->where('worker_assignments.status', 'active')
+                        ->where('worker_assignments.start_date', '<=', today())
+                        ->where('worker_assignments.end_date', '>=', today());
+                    if ($companyId) {
+                        $sub->where('worker_assignments.company_id', $companyId);
+                    }
+                })
+            )
+            ->when($request->deployment === 'previous', fn($q) =>
+                $q->whereNotExists(function ($sub) use ($companyId) {
+                    $sub->from('worker_assignments')
+                        ->whereColumn('worker_assignments.worker_id', 'al.worker_id')
+                        ->where('worker_assignments.status', 'active')
+                        ->where('worker_assignments.start_date', '<=', today())
+                        ->where('worker_assignments.end_date', '>=', today());
+                    if ($companyId) {
+                        $sub->where('worker_assignments.company_id', $companyId);
+                    }
+                })
+            )
+            ->groupBy('al.worker_id', 'al.company_id', \DB::raw('DATE(al.marked_at)'))
+            ->orderByRaw('MIN(al.marked_at) DESC');
+
+        return response()->json($rows->paginate(30));
+    }
+
     // ─── List attendance ──────────────────────────────────────────────────────
 
     public function index(Request $request): JsonResponse
     {
         $user  = $request->user();
-        $query = AttendanceLog::with(['worker:id,name,aadhaar_number_masked', 'markedBy:id,name'])
+        $query = AttendanceLog::with([
+                'worker:id,name,vendor_id,aadhaar_number_masked',
+                'worker.vendor:id,name',
+                'company:id,name',
+                'markedBy:id,name',
+            ])
             ->when($user->isCompanyUser(), fn($q) => $q->where('company_id', $user->company_id))
             ->when($user->isVendorUser(), fn($q) =>
                 $q->whereHas('worker', fn($wq) => $wq->where('vendor_id', $user->vendor_id))
@@ -28,6 +92,21 @@ class AttendanceController extends Controller
             ->when($request->worker_id, fn($q, $id) => $q->where('worker_id', $id))
             ->when($request->type,      fn($q, $t) => $q->where('type', strtoupper($t)))
             ->when($request->location,  fn($q, $l) => $q->where('location_name', $l))
+            ->when($request->deployment === 'current', fn($q) =>
+                $q->whereHas('worker.assignments', fn($q2) =>
+                    $q2->where('status', 'active')
+                       ->where('start_date', '<=', today())
+                       ->where('end_date', '>=', today())
+                )
+            )
+            ->when($request->deployment === 'previous', fn($q) =>
+                $q->whereHas('worker.assignments')
+                  ->whereDoesntHave('worker.assignments', fn($q2) =>
+                      $q2->where('status', 'active')
+                         ->where('start_date', '<=', today())
+                         ->where('end_date', '>=', today())
+                  )
+            )
             ->orderByDesc('marked_at');
 
         return response()->json($query->paginate(50));
@@ -61,10 +140,15 @@ class AttendanceController extends Controller
             ->where('status', Worker::STATUS_ACTIVE)
             ->get();
 
-        $result = $workers->map(function ($worker) use ($companyId) {
+        // Use the gate user's own location for pending-type determination
+        $gateLocation = ($user->isGateUser() && $user->location_name)
+            ? $user->location_name
+            : AttendanceLog::DEFAULT_LOCATION_NAME;
+
+        $result = $workers->map(function ($worker) use ($companyId, $gateLocation) {
             $lastLog = AttendanceLog::where('worker_id', $worker->id)
                 ->where('company_id', $companyId)
-                ->where('location_name', AttendanceLog::DEFAULT_LOCATION_NAME)
+                ->where('location_name', $gateLocation)
                 ->today()
                 ->valid()
                 ->orderByDesc('marked_at')
@@ -117,10 +201,14 @@ class AttendanceController extends Controller
             ->orderBy('name')
             ->get();
 
-        $result = $workers->map(function ($worker) use ($companyId) {
+        $gateLocation = ($user->isGateUser() && $user->location_name)
+            ? $user->location_name
+            : AttendanceLog::DEFAULT_LOCATION_NAME;
+
+        $result = $workers->map(function ($worker) use ($companyId, $gateLocation) {
             $lastLog = AttendanceLog::where('worker_id', $worker->id)
                 ->where('company_id', $companyId)
-                ->where('location_name', AttendanceLog::DEFAULT_LOCATION_NAME)
+                ->where('location_name', $gateLocation)
                 ->today()->valid()
                 ->orderByDesc('marked_at')
                 ->first();
@@ -156,7 +244,14 @@ class AttendanceController extends Controller
             'parent_id'         => 'nullable|integer|exists:attendance_logs,id',
         ]);
 
-        $user         = $request->user();
+        $user = $request->user();
+
+        // Gate users always stamp their configured location — ignore frontend values
+        if ($user->isGateUser() && $user->location_name) {
+            $data['location_type'] = $user->location_type ?? AttendanceLog::LOCATION_MAIN_GATE;
+            $data['location_name'] = $user->location_name;
+        }
+
         $locationName = $data['location_name'] ?? AttendanceLog::DEFAULT_LOCATION_NAME;
 
         $error = $this->validateAttendanceMark($data['worker_id'], $data['company_id'], $data['type'], $locationName);

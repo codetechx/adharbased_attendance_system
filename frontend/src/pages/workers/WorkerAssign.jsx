@@ -22,7 +22,7 @@ export default function WorkerAssign() {
     worker_id: "", company_id: "", start_date: today, end_date: "", shift: "general", notes: "",
   });
   const [showForm, setShowForm] = useState(false);
-  const [filterStatus, setFilterStatus] = useState("active");
+  const [tab, setTab] = useState("current"); // current | previous | all
 
   // My workers (vendor-scoped) — active ones only for deployment
   const { data: workers } = useQuery({
@@ -39,10 +39,16 @@ export default function WorkerAssign() {
   });
   const approvedCompanies = companiesRaw?.filter(c => c.request_status === "approved") ?? [];
 
+  const tabParams = {
+    current:  { deployment: "current" },
+    previous: { deployment: "previous" },
+    all:      {},
+  };
+
   // All my deployments (assignments)
   const { data: assignments, isLoading } = useQuery({
-    queryKey: ["assignments", filterStatus],
-    queryFn:  () => api.get("/assignments", { params: { status: filterStatus || undefined, per_page: 100 } }).then(r => r.data),
+    queryKey: ["assignments", tab],
+    queryFn:  () => api.get("/assignments", { params: { ...tabParams[tab], per_page: 100 } }).then(r => r.data),
   });
 
   const deploy = useMutation({
@@ -157,19 +163,23 @@ export default function WorkerAssign() {
         </div>
       )}
 
-      {/* Filter tabs */}
+      {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
-        {["active", "cancelled", ""].map((s) => (
+        {[
+          { key: "current",  label: "Current" },
+          { key: "previous", label: "Previous" },
+          { key: "all",      label: "All" },
+        ].map((t) => (
           <button
-            key={s || "all"}
-            onClick={() => setFilterStatus(s)}
+            key={t.key}
+            onClick={() => setTab(t.key)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              filterStatus === s
+              tab === t.key
                 ? "border-brand-500 text-brand-700"
                 : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
           >
-            {s === "" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+            {t.label}
           </button>
         ))}
       </div>
@@ -237,7 +247,7 @@ export default function WorkerAssign() {
                   )}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  {a.status === "active" && !a.is_locked && (
+                  {a.status === "active" && (
                     <button
                       onClick={() => cancel.mutate(a.id)}
                       disabled={cancel.isPending}
@@ -245,9 +255,6 @@ export default function WorkerAssign() {
                     >
                       Cancel
                     </button>
-                  )}
-                  {a.is_locked && (
-                    <span className="text-xs text-gray-400 italic">locked</span>
                   )}
                 </td>
               </tr>

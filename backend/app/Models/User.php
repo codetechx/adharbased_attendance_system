@@ -34,6 +34,8 @@ class User extends Authenticatable
         'vendor_id',
         'phone',
         'is_active',
+        'location_type',
+        'location_name',
     ];
 
     protected $hidden = [

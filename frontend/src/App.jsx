@@ -9,6 +9,7 @@ import VendorProfile from "@/pages/vendors/VendorProfile";
 import VendorApproval from "@/pages/vendors/VendorApproval";
 import VendorCompanyAccess from "@/pages/vendors/VendorCompanyAccess";
 import WorkerList from "@/pages/workers/WorkerList";
+import WorkerDetail from "@/pages/workers/WorkerDetail";
 import WorkerRegister from "@/pages/workers/WorkerRegister";
 import WorkerAssign from "@/pages/workers/WorkerAssign";
 import AttendanceMark from "@/pages/attendance/AttendanceMark";
@@ -74,6 +75,7 @@ export default function App() {
 
         {/* Workers */}
         <Route path="workers" element={<WorkerList />} />
+        <Route path="workers/:id" element={<WorkerDetail />} />
         <Route path="workers/register" element={
           <PrivateRoute roles={["super_admin", "vendor_admin", "vendor_operator"]}>
             <WorkerRegister />

@@ -10,7 +10,8 @@
       "PowerShell(docker cp \"c:\\\\Users\\\\sdmal\\\\projects\\\\attendance_system\\\\backend\\\\routes\\\\api.php\" \"ams_backend:/var/www/html/routes/api.php\")",
       "PowerShell(docker exec ams_frontend ls /app/src/pages/companies/)",
       "Bash(docker inspect *)",
-      "Bash(docker stats *)"
+      "Bash(docker stats *)",
+      "Bash(npm run *)"
     ]
   }
 }

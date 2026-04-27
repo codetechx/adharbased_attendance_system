@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AttendanceLog;
 use App\Models\Worker;
+use App\Models\WorkerAssignment;
 use App\Models\User;
 use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
@@ -16,24 +18,135 @@ class WorkerController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $user  = $request->user();
-        $query = Worker::with(['vendor:id,name'])
+        $user       = $request->user();
+        $deployment = $request->deployment; // current | previous | (empty = all)
+
+        $query = Worker::with(['vendor:id,name', 'idDocuments'])
             ->when($user->isVendorUser(), fn($q) => $q->where('vendor_id', $user->vendor_id))
-            ->when($user->isCompanyUser(), function ($q) use ($user) {
-                // Company users only see workers deployed to them today
-                $activeWorkerIds = \DB::table('worker_assignments')
-                    ->where('company_id', $user->company_id)
-                    ->where('status', 'active')
-                    ->where('start_date', '<=', today())
-                    ->where('end_date', '>=', today())
-                    ->pluck('worker_id');
-                $q->whereIn('id', $activeWorkerIds);
+            ->when($user->isCompanyUser(), function ($q) use ($user, $deployment) {
+                if ($deployment === 'previous') {
+                    // Workers with any attendance at this company, but no active deployment today
+                    $q->whereHas('attendanceLogs', fn($lq) => $lq->where('company_id', $user->company_id))
+                      ->whereDoesntHave('assignments', fn($aq) =>
+                          $aq->where('company_id', $user->company_id)
+                             ->where('status', 'active')
+                             ->where('start_date', '<=', today())
+                             ->where('end_date', '>=', today())
+                      );
+                } else {
+                    // Default / current: active deployments covering today
+                    $ids = \DB::table('worker_assignments')
+                        ->where('company_id', $user->company_id)
+                        ->where('status', 'active')
+                        ->where('start_date', '<=', today())
+                        ->where('end_date', '>=', today())
+                        ->pluck('worker_id');
+                    $q->whereIn('id', $ids);
+                }
+            })
+            ->when(!$user->isCompanyUser(), function ($q) use ($deployment) {
+                // For super_admin / vendor users
+                if ($deployment === 'current') {
+                    $q->whereHas('assignments', fn($q2) =>
+                        $q2->where('status', 'active')
+                           ->where('start_date', '<=', today())
+                           ->where('end_date', '>=', today())
+                    );
+                } elseif ($deployment === 'previous') {
+                    $q->whereHas('assignments')
+                      ->whereDoesntHave('assignments', fn($q2) =>
+                          $q2->where('status', 'active')
+                             ->where('start_date', '<=', today())
+                             ->where('end_date', '>=', today())
+                      );
+                }
             })
             ->when($request->status, fn($q, $s) => $q->where('status', $s))
             ->when($request->search, fn($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->orderByDesc('created_at');
 
         return response()->json($query->paginate(20));
+    }
+
+    public function stats(Request $request, Worker $worker): JsonResponse
+    {
+        $user      = $request->user();
+        $companyId = $user->isCompanyUser() ? $user->company_id : null;
+
+        // Authorization
+        if ($user->isVendorUser() && $worker->vendor_id !== $user->vendor_id) {
+            abort(403, 'Access denied.');
+        }
+        if ($user->isCompanyUser()) {
+            $related = AttendanceLog::where('worker_id', $worker->id)->where('company_id', $companyId)->exists()
+                || WorkerAssignment::where('worker_id', $worker->id)->where('company_id', $companyId)->exists();
+            abort_unless($related, 403, 'Worker not associated with your company.');
+        }
+
+        // Non-company users can optionally scope to a specific company
+        if (!$user->isCompanyUser() && $request->company_id) {
+            $companyId = (int) $request->company_id;
+        }
+
+        $worker->load(['vendor:id,name']);
+
+        $base = AttendanceLog::where('worker_id', $worker->id)
+            ->when($companyId, fn($q) => $q->where('company_id', $companyId));
+
+        $totalIn   = (clone $base)->where('type', 'IN')->count();
+        $totalOut  = (clone $base)->where('type', 'OUT')->count();
+        $totalDays = (clone $base)->selectRaw('COUNT(DISTINCT DATE(marked_at)) as cnt')->value('cnt') ?? 0;
+        $locations = (clone $base)->whereNotNull('location_name')->distinct()->pluck('location_name');
+
+        // Monthly breakdown — last 6 months
+        $sixMonthsAgo = now()->subMonths(6)->startOfMonth();
+
+        $monthlyRaw = (clone $base)
+            ->selectRaw("DATE_FORMAT(marked_at, '%Y-%m') as month, type, COUNT(*) as cnt")
+            ->where('marked_at', '>=', $sixMonthsAgo)
+            ->groupBy('month', 'type')
+            ->orderByDesc('month')
+            ->get();
+
+        $daysPerMonth = (clone $base)
+            ->selectRaw("DATE_FORMAT(marked_at, '%Y-%m') as month, COUNT(DISTINCT DATE(marked_at)) as days")
+            ->where('marked_at', '>=', $sixMonthsAgo)
+            ->groupBy('month')
+            ->pluck('days', 'month');
+
+        $monthly = $monthlyRaw->groupBy('month')->map(fn($rows, $month) => [
+            'month'     => $month,
+            'days'      => $daysPerMonth[$month] ?? 0,
+            'in_count'  => $rows->where('type', 'IN')->sum('cnt'),
+            'out_count' => $rows->where('type', 'OUT')->sum('cnt'),
+        ])->values();
+
+        // Deployments
+        $deployments = WorkerAssignment::with(['company:id,name'])
+            ->where('worker_id', $worker->id)
+            ->when($companyId, fn($q) => $q->where('company_id', $companyId))
+            ->orderByDesc('start_date')
+            ->get();
+
+        // Recent 30 logs
+        $recentLogs = (clone $base)
+            ->with(['company:id,name'])
+            ->orderByDesc('marked_at')
+            ->limit(30)
+            ->get();
+
+        return response()->json([
+            'worker'      => $worker,
+            'summary'     => [
+                'total_in'   => $totalIn,
+                'total_out'  => $totalOut,
+                'total_days' => $totalDays,
+                'locations'  => $locations,
+            ],
+            'monthly'     => $monthly,
+            'deployments' => $deployments,
+            'recent_logs' => $recentLogs,
+        ]);
     }
 
     public function store(Request $request): JsonResponse
@@ -164,6 +277,20 @@ class WorkerController extends Controller
         $this->audit->log($request->user()->id, 'fingerprint_deleted', Worker::class, $worker->id);
 
         return response()->json(['message' => 'Fingerprint removed.']);
+    }
+
+    // ─── Photo Serve ──────────────────────────────────────────────────────────
+
+    public function servePhoto(Request $request, Worker $worker)
+    {
+        abort_unless($worker->photo_path, 404);
+
+        $user = $request->user();
+        if ($user->isVendorUser() && $worker->vendor_id !== $user->vendor_id) {
+            abort(403);
+        }
+
+        return Storage::disk('private')->response($worker->photo_path);
     }
 
     // ─── Photo Upload ─────────────────────────────────────────────────────────

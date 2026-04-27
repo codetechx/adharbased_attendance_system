@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/axios";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, Search, Fingerprint, UserCheck, AlertTriangle } from "lucide-react";
+import { Plus, Search, Fingerprint, Download, FileText } from "lucide-react";
 import toast from "react-hot-toast";
 
 const STATUS_BADGE = {
@@ -14,20 +14,43 @@ const STATUS_BADGE = {
 };
 
 export default function WorkerList() {
-  const { user }           = useAuth();
-  const queryClient        = useQueryClient();
+  const { user }             = useAuth();
+  const queryClient          = useQueryClient();
+  const navigate             = useNavigate();
   const [search, setSearch]  = useState("");
   const [status, setStatus]  = useState("");
   const [page, setPage]      = useState(1);
+  const [tab, setTab]        = useState("all"); // all | current | previous
+
+  const deploymentParam = tab !== "all" ? tab : undefined;
 
   const { data, isLoading } = useQuery({
-    queryKey: ["workers", search, status, page],
-    queryFn:  () => api.get("/workers", { params: { search, status, page } }).then((r) => r.data),
+    queryKey: ["workers", search, status, page, tab],
+    queryFn:  () => api.get("/workers", { params: { search, status, page, deployment: deploymentParam } }).then((r) => r.data),
     keepPreviousData: true,
   });
 
   const canRegister = ["super_admin", "vendor_admin", "vendor_operator"].includes(user?.role);
   const canActivate = ["super_admin", "company_admin", "vendor_admin"].includes(user?.role);
+
+  const downloadDoc = async (workerId, docId, workerName, typeLabel, isAadhaar = false) => {
+    try {
+      const url = isAadhaar
+        ? `/aadhaar/download/${workerId}`
+        : `/workers/${workerId}/id-documents/${docId}/download`;
+      const r = await api.get(url, { responseType: "blob" });
+      const blob = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = blob;
+      a.download = `${workerName}_${typeLabel}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blob);
+    } catch {
+      toast.error("Could not download document.");
+    }
+  };
 
   const activateMutation = useMutation({
     mutationFn: (id) => api.post(`/workers/${id}/activate`),
@@ -54,6 +77,27 @@ export default function WorkerList() {
             Register Worker
           </Link>
         )}
+      </div>
+
+      {/* Deployment tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {[
+          { key: "all",      label: "All Workers" },
+          { key: "current",  label: "Current" },
+          { key: "previous", label: "Previous" },
+        ].map((t) => (
+          <button
+            key={t.key}
+            onClick={() => { setTab(t.key); setPage(1); }}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              tab === t.key
+                ? "border-brand-500 text-brand-700"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* Filters */}
@@ -102,6 +146,7 @@ export default function WorkerList() {
                 <th className="text-left px-4 py-3 font-medium text-gray-500 hidden md:table-cell">Vendor</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-500 hidden sm:table-cell">Aadhaar</th>
                 <th className="text-center px-4 py-3 font-medium text-gray-500">FP</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-500 hidden md:table-cell">ID Document</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-500">Actions</th>
               </tr>
@@ -109,12 +154,16 @@ export default function WorkerList() {
             <tbody className="divide-y divide-gray-50">
               {data?.data?.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center text-gray-400 py-12">
+                  <td colSpan={7} className="text-center text-gray-400 py-12">
                     No workers found. {canRegister && <Link to="/workers/register" className="text-brand-600 underline">Register one</Link>}
                   </td>
                 </tr>
               ) : data?.data?.map((w) => (
-                <tr key={w.id} className="hover:bg-gray-50/50 transition-colors">
+                <tr
+                  key={w.id}
+                  onClick={() => navigate(`/workers/${w.id}`)}
+                  className="hover:bg-gray-50/50 transition-colors cursor-pointer"
+                >
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-semibold text-sm flex-shrink-0">
@@ -136,12 +185,43 @@ export default function WorkerList() {
                       : <Fingerprint size={16} className="text-gray-200 mx-auto" title="Not enrolled" />
                     }
                   </td>
+                  <td className="px-4 py-4 hidden md:table-cell" onClick={(e) => e.stopPropagation()}>
+                    {(() => {
+                      const doc = w.id_documents?.find(d => d.is_primary) ?? w.id_documents?.[0];
+                      if (!doc) return <span className="text-gray-300 text-xs">—</span>;
+
+                      const isAadhaar = doc.id_type === "aadhaar";
+                      const hasFile   = isAadhaar ? w.has_aadhaar_pdf : doc.has_document;
+
+                      const handleDownload = isAadhaar
+                        ? () => downloadDoc(w.id, null, w.name, "Aadhaar", true)
+                        : () => downloadDoc(w.id, doc.id, w.name, doc.type_label, false);
+
+                      return (
+                        <div>
+                          <p className="text-xs text-gray-700 font-medium">{doc.type_label}</p>
+                          {hasFile ? (
+                            <button
+                              type="button"
+                              onClick={handleDownload}
+                              className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-800 mt-0.5"
+                            >
+                              <Download size={11} /><FileText size={11} />
+                              {isAadhaar ? "Download PDF" : "Download"}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-400">No file</span>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </td>
                   <td className="px-4 py-4">
                     <span className={`badge ${STATUS_BADGE[w.status] ?? "badge-gray"}`}>
                       {w.status}
                     </span>
                   </td>
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       {canRegister && (
                         <Link to={`/workers/${w.id}/edit`} className="text-xs text-brand-600 hover:underline">

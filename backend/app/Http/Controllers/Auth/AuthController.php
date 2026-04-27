@@ -80,15 +80,17 @@ class AuthController extends Controller
     private function userResponse(User $user): array
     {
         return [
-            'id'         => $user->id,
-            'name'       => $user->name,
-            'email'      => $user->email,
-            'role'       => $user->role,
-            'company_id' => $user->company_id,
-            'vendor_id'  => $user->vendor_id,
-            'company'    => $user->company ? ['id' => $user->company->id, 'name' => $user->company->name] : null,
-            'vendor'     => $user->vendor ? ['id' => $user->vendor->id, 'name' => $user->vendor->name] : null,
-            'is_active'  => $user->is_active,
+            'id'            => $user->id,
+            'name'          => $user->name,
+            'email'         => $user->email,
+            'role'          => $user->role,
+            'company_id'    => $user->company_id,
+            'vendor_id'     => $user->vendor_id,
+            'company'       => $user->company ? ['id' => $user->company->id, 'name' => $user->company->name] : null,
+            'vendor'        => $user->vendor ? ['id' => $user->vendor->id, 'name' => $user->vendor->name] : null,
+            'is_active'     => $user->is_active,
+            'location_type' => $user->location_type,
+            'location_name' => $user->location_name,
         ];
     }
 }

@@ -32,7 +32,7 @@ class WorkerIdDocumentController extends Controller
         ]);
 
         if ($request->hasFile('document_image')) {
-            $request->validate(['document_image' => 'required|image|max:4096|mimes:jpeg,png,jpg']);
+            $request->validate(['document_image' => 'max:10240|mimes:jpeg,png,jpg,pdf']);
             $data['document_path'] = $request->file('document_image')
                 ->store('workers/documents', 'private');
         }
@@ -49,6 +49,32 @@ class WorkerIdDocumentController extends Controller
         ]);
 
         return response()->json($doc, 201);
+    }
+
+    public function download(Request $request, Worker $worker, WorkerIdDocument $document)
+    {
+        $user = $request->user();
+
+        if ($user->isVendorUser() && $worker->vendor_id !== $user->vendor_id) {
+            abort(403);
+        }
+
+        // Company users may download if the worker has ever been deployed / attended at their company
+        if ($user->isCompanyUser()) {
+            $related = $worker->assignments()->where('company_id', $user->company_id)->exists()
+                || \App\Models\AttendanceLog::where('worker_id', $worker->id)
+                       ->where('company_id', $user->company_id)->exists();
+            abort_unless($related, 403, 'Worker not associated with your company.');
+        }
+
+        abort_if($document->worker_id !== $worker->id, 404);
+        abort_unless($document->document_path, 404, 'No document file on record.');
+        abort_unless(Storage::disk('private')->exists($document->document_path), 404, 'File not found.');
+
+        $ext      = pathinfo($document->document_path, PATHINFO_EXTENSION);
+        $filename = "{$worker->name}_{$document->type_label}.{$ext}";
+
+        return Storage::disk('private')->download($document->document_path, $filename);
     }
 
     public function destroy(Request $request, Worker $worker, WorkerIdDocument $document): JsonResponse

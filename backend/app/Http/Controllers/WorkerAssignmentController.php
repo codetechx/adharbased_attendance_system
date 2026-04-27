@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AttendanceLog;
 use App\Models\Company;
 use App\Models\Worker;
 use App\Models\WorkerAssignment;
@@ -21,6 +22,17 @@ class WorkerAssignmentController extends Controller
             ->when($user->isVendorUser(),  fn($q) => $q->where('vendor_id', $user->vendor_id))
             ->when($request->status,  fn($q, $s) => $q->where('status', $s))
             ->when($request->date, fn($q, $d) => $q->where('start_date', '<=', $d)->where('end_date', '>=', $d))
+            ->when($request->deployment === 'current', fn($q) =>
+                $q->where('status', WorkerAssignment::STATUS_ACTIVE)
+                  ->where('start_date', '<=', today())
+                  ->where('end_date', '>=', today())
+            )
+            ->when($request->deployment === 'previous', fn($q) =>
+                $q->where(fn($q2) =>
+                    $q2->where('status', WorkerAssignment::STATUS_CANCELLED)
+                       ->orWhere('end_date', '<', today())
+                )
+            )
             ->orderByDesc('start_date');
 
         return response()->json($query->paginate(30));
@@ -116,9 +128,17 @@ class WorkerAssignmentController extends Controller
     public function destroy(Request $request, WorkerAssignment $assignment): JsonResponse
     {
         if ($assignment->is_locked) {
-            return response()->json([
-                'message' => 'This deployment is locked — attendance has been recorded. Cancel it instead by setting status=cancelled.',
-            ], 422);
+            // Allow cancel only when no pending IN exists (worker is fully out)
+            $latestLog = AttendanceLog::where('worker_id', $assignment->worker_id)
+                ->where('company_id', $assignment->company_id)
+                ->latest('marked_at')
+                ->first();
+
+            if ($latestLog && $latestLog->type === AttendanceLog::TYPE_IN) {
+                return response()->json([
+                    'message' => 'Worker is currently checked IN. Please mark them OUT before cancelling this deployment.',
+                ], 422);
+            }
         }
 
         $assignment->update(['status' => WorkerAssignment::STATUS_CANCELLED]);

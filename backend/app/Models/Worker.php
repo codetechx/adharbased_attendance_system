@@ -45,6 +45,8 @@ class Worker extends Model
         'fingerprint_template',
     ];
 
+    protected $appends = ['photo_url', 'has_aadhaar_pdf'];
+
     protected $casts = [
         'dob'                    => 'date',
         'aadhaar_data_extracted'  => 'array',
@@ -100,6 +102,11 @@ class Worker extends Model
         return $this->photo_path
             ? route('worker.photo', ['worker' => $this->id])
             : null;
+    }
+
+    public function getHasAadhaarPdfAttribute(): bool
+    {
+        return !empty($this->attributes['aadhaar_pdf_path'] ?? null);
     }
 
     public function hasFingerprint(): bool

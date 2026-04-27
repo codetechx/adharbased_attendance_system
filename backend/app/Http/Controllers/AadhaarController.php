@@ -99,8 +99,14 @@ class AadhaarController extends Controller
     {
         $user = $request->user();
 
-        // Only super admin and the vendor who registered the worker can download
-        if (! $user->isSuperAdmin() && ! ($user->isVendorUser() && $user->vendor_id === $worker->vendor_id)) {
+        if ($user->isCompanyUser()) {
+            $related = $worker->assignments()->where('company_id', $user->company_id)->exists()
+                || \App\Models\AttendanceLog::where('worker_id', $worker->id)
+                       ->where('company_id', $user->company_id)->exists();
+            if (! $related) {
+                return response()->json(['message' => 'Access denied.'], 403);
+            }
+        } elseif (! $user->isSuperAdmin() && ! ($user->isVendorUser() && $user->vendor_id === $worker->vendor_id)) {
             return response()->json(['message' => 'Access denied.'], 403);
         }
 

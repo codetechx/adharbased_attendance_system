@@ -3,7 +3,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/lib/axios";
 import toast from "react-hot-toast";
-import { Search, Plus, Eye, EyeOff, RefreshCw, Copy, Pencil, ToggleLeft, ToggleRight, X, MoreVertical } from "lucide-react";
+import {
+  Search, Plus, Eye, EyeOff, RefreshCw, Copy, Pencil,
+  ToggleLeft, ToggleRight, X, MoreVertical,
+  CheckCircle, Clock, PauseCircle, XCircle,
+} from "lucide-react";
 
 function CardMenu({ vendor, onEdit, onToggle }) {
   const [open, setOpen] = useState(false);
@@ -61,22 +65,55 @@ function FieldLabel({ k }) {
   return <label className="label">{labels[k] ?? k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</label>;
 }
 
+const APPROVAL_BADGE = {
+  approved:      { label: "Approved",  badge: "badge-green",  Icon: CheckCircle },
+  pending:       { label: "Pending",   badge: "badge-yellow", Icon: Clock       },
+  suspended:     { label: "Suspended", badge: "badge-gray",   Icon: PauseCircle },
+  rejected:      { label: "Rejected",  badge: "badge-red",    Icon: XCircle     },
+};
+
+function ApprovalBadge({ status }) {
+  const cfg = APPROVAL_BADGE[status];
+  if (!cfg) return null;
+  const { Icon } = cfg;
+  return (
+    <span className={`badge ${cfg.badge} inline-flex items-center gap-1`}>
+      <Icon size={10} /> {cfg.label}
+    </span>
+  );
+}
+
 export default function VendorList() {
   const { user }    = useAuth();
   const queryClient = useQueryClient();
-  const [search, setSearch]       = useState("");
+  const [search, setSearch]         = useState("");
+  const [filter, setFilter]         = useState("approved");
   const [showCreate, setShowCreate] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
-  const [form, setForm]           = useState(VENDOR_INIT);
-  const [admin, setAdmin]         = useState(ADMIN_INIT);
-  const [showPass, setShowPass]   = useState(false);
+  const [form, setForm]             = useState(VENDOR_INIT);
+  const [admin, setAdmin]           = useState(ADMIN_INIT);
+  const [showPass, setShowPass]     = useState(false);
 
-  const isSuperAdmin = user?.role === "super_admin";
+  const isSuperAdmin  = user?.role === "super_admin";
+  const isCompanyUser = ["company_admin", "company_gate"].includes(user?.role);
 
-  const { data, isLoading } = useQuery({
+  // ── Data fetching ──────────────────────────────────────────────────────────
+
+  // Super admin: full global vendor list
+  const { data: globalData, isLoading: globalLoading } = useQuery({
     queryKey: ["vendors", search],
     queryFn:  () => api.get("/vendors", { params: { search } }).then(r => r.data),
+    enabled:  !isCompanyUser,
   });
+
+  // Company user: vendors associated with their company (includes pivot status)
+  const { data: companyVendors, isLoading: cvLoading } = useQuery({
+    queryKey: ["company-vendors-list", user?.company_id],
+    queryFn:  () => api.get(`/companies/${user.company_id}/vendors`).then(r => r.data),
+    enabled:  isCompanyUser,
+  });
+
+  // ── Mutations (super admin only) ───────────────────────────────────────────
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -120,14 +157,42 @@ export default function VendorList() {
   const copyPassword = () => { navigator.clipboard.writeText(admin.password); toast.success("Password copied!"); };
   const field = (k) => ({ value: form[k], onChange: (e) => setForm(p => ({ ...p, [k]: e.target.value })) });
 
-  const vendors = data?.data ?? [];
+  // ── Derive vendor list ─────────────────────────────────────────────────────
+
+  const isLoading = isCompanyUser ? cvLoading : globalLoading;
+
+  const vendors = isCompanyUser
+    ? (companyVendors ?? [])
+        .filter(v => filter === "all" || v.pivot?.status === filter)
+        .filter(v => !search || v.name?.toLowerCase().includes(search.toLowerCase()) || v.code?.toLowerCase().includes(search.toLowerCase()))
+    : (globalData?.data ?? []);
+
+  const counts = isCompanyUser
+    ? {
+        approved:  (companyVendors ?? []).filter(v => v.pivot?.status === "approved").length,
+        pending:   (companyVendors ?? []).filter(v => v.pivot?.status === "pending").length,
+        suspended: (companyVendors ?? []).filter(v => v.pivot?.status === "suspended").length,
+        rejected:  (companyVendors ?? []).filter(v => v.pivot?.status === "rejected").length,
+        all:       (companyVendors ?? []).length,
+      }
+    : null;
+
+  const TABS = [
+    { key: "approved",  label: "Approved",  count: counts?.approved  },
+    { key: "pending",   label: "Pending",   count: counts?.pending   },
+    { key: "suspended", label: "Suspended", count: counts?.suspended },
+    { key: "rejected",  label: "Rejected",  count: counts?.rejected  },
+    { key: "all",       label: "All",       count: counts?.all       },
+  ];
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Vendors</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Registered vendor companies</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {isCompanyUser ? "Vendors associated with your company" : "Registered vendor companies"}
+          </p>
         </div>
         {isSuperAdmin && (
           <button className="btn-primary" onClick={() => { setShowCreate(true); setForm(VENDOR_INIT); setAdmin(ADMIN_INIT); }}>
@@ -136,13 +201,40 @@ export default function VendorList() {
         )}
       </div>
 
+      {/* Status tabs — company users only */}
+      {isCompanyUser && (
+        <div className="flex gap-0 flex-wrap border-b border-gray-200">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setFilter(t.key)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                filter === t.key
+                  ? "border-brand-500 text-brand-700"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {t.label}
+              {t.count > 0 && (
+                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
+                  filter === t.key ? "bg-brand-100 text-brand-700" : "bg-gray-100 text-gray-500"
+                }`}>
+                  {t.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
         <input type="text" placeholder="Search vendors…" value={search}
           onChange={e => setSearch(e.target.value)} className="input pl-9" />
       </div>
 
-      {/* ── Create form ─────────────────────────────────────────────────────── */}
+      {/* ── Create form (super admin only) ─────────────────────────────────── */}
       {showCreate && (
         <div className="card space-y-5">
           <div className="flex items-center justify-between">
@@ -159,7 +251,6 @@ export default function VendorList() {
             ))}
           </div>
 
-          {/* Admin login — always visible */}
           <div className="border-t border-gray-100 pt-4 space-y-3">
             <p className="text-sm font-semibold text-gray-700">
               Vendor Admin Login <span className="text-xs text-gray-400 font-normal">(optional — vendor admin can register workers)</span>
@@ -214,34 +305,39 @@ export default function VendorList() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {isLoading
           ? [...Array(6)].map((_, i) => <div key={i} className="card animate-pulse h-32 bg-gray-100" />)
-          : vendors.map(v => (
-            <div key={v.id} className="card hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h3 className="font-semibold text-gray-900 truncate">{v.name}</h3>
-                  <p className="text-xs text-gray-400 font-mono">{v.code}</p>
+          : vendors.length === 0
+            ? <p className="text-gray-400 text-sm col-span-3 text-center py-10">No vendors in this category.</p>
+            : vendors.map(v => (
+              <div key={v.id} className="card hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-gray-900 truncate">{v.name}</h3>
+                    <p className="text-xs text-gray-400 font-mono">{v.code}</p>
+                  </div>
+                  {isSuperAdmin && (
+                    <CardMenu
+                      vendor={v}
+                      onEdit={() => openEdit(v)}
+                      onToggle={() => toggleMutation.mutate({ id: v.id, status: v.status === "active" ? "inactive" : "active" })}
+                    />
+                  )}
                 </div>
-                {isSuperAdmin && (
-                  <CardMenu
-                    vendor={v}
-                    onEdit={() => openEdit(v)}
-                    onToggle={() => toggleMutation.mutate({ id: v.id, status: v.status === "active" ? "inactive" : "active" })}
-                  />
-                )}
+                <div className="mt-2 space-y-0.5">
+                  <p className="text-sm text-gray-500 truncate">{v.contact_person}</p>
+                  <p className="text-xs text-gray-400 truncate">{v.contact_email}</p>
+                  <p className="text-xs text-gray-400">{[v.city, v.state].filter(Boolean).join(", ")}</p>
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+                  <span className={`badge ${v.status === "active" ? "badge-green" : "badge-gray"}`}>{v.status}</span>
+                  {isCompanyUser && v.pivot?.status && (
+                    <ApprovalBadge status={v.pivot.status} />
+                  )}
+                </div>
               </div>
-              <div className="mt-2 space-y-0.5">
-                <p className="text-sm text-gray-500 truncate">{v.contact_person}</p>
-                <p className="text-xs text-gray-400 truncate">{v.contact_email}</p>
-                <p className="text-xs text-gray-400">{[v.city, v.state].filter(Boolean).join(", ")}</p>
-              </div>
-              <div className="mt-3 pt-3 border-t border-gray-100">
-                <span className={`badge ${v.status === "active" ? "badge-green" : "badge-gray"}`}>{v.status}</span>
-              </div>
-            </div>
-          ))}
+            ))}
       </div>
 
-      {/* ── Edit modal ───────────────────────────────────────────────────────── */}
+      {/* ── Edit modal (super admin only) ────────────────────────────────────── */}
       {editTarget && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">

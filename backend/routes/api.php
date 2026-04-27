@@ -50,6 +50,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // ── Workers ───────────────────────────────────────────────────────────────
     Route::apiResource('workers', WorkerController::class);
     Route::prefix('workers/{worker}')->group(function () {
+        Route::get('stats',          [WorkerController::class, 'stats']);
+        Route::get('photo',          [WorkerController::class, 'servePhoto'])->name('worker.photo');
         Route::post('fingerprint',   [WorkerController::class, 'storeFingerprint']);
         Route::delete('fingerprint', [WorkerController::class, 'deleteFingerprint']);
         Route::post('photo',         [WorkerController::class, 'uploadPhoto']);
@@ -57,9 +59,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('deactivate',    [WorkerController::class, 'deactivate']);
 
         // ID documents (PAN, Aadhaar, Driving Licence, etc.)
-        Route::get('id-documents',         [WorkerIdDocumentController::class, 'index']);
-        Route::post('id-documents',        [WorkerIdDocumentController::class, 'store']);
-        Route::delete('id-documents/{document}', [WorkerIdDocumentController::class, 'destroy']);
+        Route::get('id-documents',                    [WorkerIdDocumentController::class, 'index']);
+        Route::post('id-documents',                   [WorkerIdDocumentController::class, 'store']);
+        Route::get('id-documents/{document}/download',[WorkerIdDocumentController::class, 'download']);
+        Route::delete('id-documents/{document}',      [WorkerIdDocumentController::class, 'destroy']);
     });
 
     // ── Aadhaar ───────────────────────────────────────────────────────────────
@@ -77,6 +80,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // ── Attendance ────────────────────────────────────────────────────────────
     Route::prefix('attendance')->group(function () {
         Route::get('/',               [AttendanceController::class, 'index']);
+        Route::get('daily-summary',   [AttendanceController::class, 'dailySummary']);
         Route::get('worker-templates', [AttendanceController::class, 'workerTemplates']); // SGIBIOSRV 1:N
         Route::get('assigned-workers', [AttendanceController::class, 'assignedWorkers']); // photo/manual
         Route::post('mark',           [AttendanceController::class, 'mark']);

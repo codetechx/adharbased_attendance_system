@@ -16,7 +16,8 @@ class UserController extends Controller
     {
         $auth = $request->user();
 
-        $users = User::with(['company:id,name', 'vendor:id,name'])
+        $users = User::select(['id','name','email','role','company_id','vendor_id','phone','is_active','location_type','location_name'])
+            ->with(['company:id,name', 'vendor:id,name'])
             // company_admin only sees their own gate users
             ->when($auth->role === 'company_admin', fn($q) =>
                 $q->where('company_id', $auth->company_id)->where('role', 'company_gate')
@@ -38,10 +39,12 @@ class UserController extends Controller
         if ($auth->role === 'company_admin') {
             // company_admin can only create gate users for their own company
             $data = $request->validate([
-                'name'     => 'required|string|max:100',
-                'email'    => 'required|email|unique:users',
-                'password' => ['required', Password::min(8)->letters()->numbers()],
-                'phone'    => 'nullable|string|max:15',
+                'name'          => 'required|string|max:100',
+                'email'         => 'required|email|unique:users',
+                'password'      => ['required', Password::min(8)->letters()->numbers()],
+                'phone'         => 'nullable|string|max:15',
+                'location_type' => 'nullable|in:main_gate,department,checkpoint',
+                'location_name' => 'nullable|string|max:100',
             ]);
             $data['role']       = 'company_gate';
             $data['company_id'] = $auth->company_id;
@@ -52,13 +55,15 @@ class UserController extends Controller
         }
 
         $data = $request->validate([
-            'name'       => 'required|string|max:100',
-            'email'      => 'required|email|unique:users',
-            'password'   => ['required', Password::min(8)->letters()->numbers()],
-            'role'       => 'required|in:' . implode(',', User::ROLES),
-            'company_id' => 'nullable|integer|exists:companies,id',
-            'vendor_id'  => 'nullable|integer|exists:vendors,id',
-            'phone'      => 'nullable|string|max:15',
+            'name'          => 'required|string|max:100',
+            'email'         => 'required|email|unique:users',
+            'password'      => ['required', Password::min(8)->letters()->numbers()],
+            'role'          => 'required|in:' . implode(',', User::ROLES),
+            'company_id'    => 'nullable|integer|exists:companies,id',
+            'vendor_id'     => 'nullable|integer|exists:vendors,id',
+            'phone'         => 'nullable|string|max:15',
+            'location_type' => 'nullable|in:main_gate,department,checkpoint',
+            'location_name' => 'nullable|string|max:100',
         ]);
 
         $data['is_active'] = true;
@@ -84,10 +89,12 @@ class UserController extends Controller
             }
 
             $data = $request->validate([
-                'name'      => 'sometimes|string|max:100',
-                'email'     => "sometimes|email|unique:users,email,{$user->id}",
-                'phone'     => 'nullable|string|max:15',
-                'is_active' => 'sometimes|boolean',
+                'name'          => 'sometimes|string|max:100',
+                'email'         => "sometimes|email|unique:users,email,{$user->id}",
+                'phone'         => 'nullable|string|max:15',
+                'is_active'     => 'sometimes|boolean',
+                'location_type' => 'nullable|in:main_gate,department,checkpoint',
+                'location_name' => 'nullable|string|max:100',
             ]);
             $user->update($data);
             $this->audit->log($auth->id, 'user_updated', User::class, $user->id);
@@ -95,13 +102,15 @@ class UserController extends Controller
         }
 
         $data = $request->validate([
-            'name'       => 'sometimes|string|max:100',
-            'email'      => "sometimes|email|unique:users,email,{$user->id}",
-            'role'       => 'sometimes|in:' . implode(',', User::ROLES),
-            'company_id' => 'nullable|integer|exists:companies,id',
-            'vendor_id'  => 'nullable|integer|exists:vendors,id',
-            'phone'      => 'nullable|string|max:15',
-            'is_active'  => 'sometimes|boolean',
+            'name'          => 'sometimes|string|max:100',
+            'email'         => "sometimes|email|unique:users,email,{$user->id}",
+            'role'          => 'sometimes|in:' . implode(',', User::ROLES),
+            'company_id'    => 'nullable|integer|exists:companies,id',
+            'vendor_id'     => 'nullable|integer|exists:vendors,id',
+            'phone'         => 'nullable|string|max:15',
+            'is_active'     => 'sometimes|boolean',
+            'location_type' => 'nullable|in:main_gate,department,checkpoint',
+            'location_name' => 'nullable|string|max:100',
         ]);
 
         $user->update($data);

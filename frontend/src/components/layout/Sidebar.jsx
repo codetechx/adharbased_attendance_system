@@ -18,7 +18,7 @@ const NAV = [
     items: [
       { to: "/companies",              icon: Building2,   label: "Companies",       roles: ["super_admin"] },
       { to: "/users",                  icon: UserCog,     label: "Users",           roles: ["super_admin"] },
-      { to: "/users",                  icon: UserCog,     label: "Gate Users",      roles: ["company_admin"] },
+      { to: "/users",                  icon: UserCog,     label: "Users",           roles: ["company_admin"] },
       { to: "/vendors",                icon: Users,       label: "Vendors",         roles: ["super_admin", "company_admin", "company_gate"], end: true },
       { to: "/profile",               icon: Settings,    label: "My Organization", roles: ["vendor_admin", "vendor_operator"] },
       { to: "/vendors/approval",       icon: ShieldCheck, label: "Vendor Approvals",roles: ["super_admin", "company_admin"] },
@@ -37,7 +37,7 @@ const NAV = [
     label: "Attendance",
     items: [
       { to: "/attendance",            icon: BarChart2,    label: "Attendance Log",  roles: ["all"], end: true },
-      { to: "/attendance/mark",       icon: Fingerprint,  label: "Mark Attendance", roles: ["super_admin", "company_admin", "company_gate"] },
+      { to: "/attendance/mark",       icon: Fingerprint,  label: "In / Out",        roles: ["super_admin", "company_admin", "company_gate"] },
       { to: "/attendance/exceptions", icon: AlertTriangle,label: "Exceptions",      roles: ["super_admin", "company_admin", "vendor_admin"] },
     ],
   },
