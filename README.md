@@ -17,6 +17,12 @@ attendance_system/
 │
 ├── backend/                    # Laravel 11 (PHP 8.3 + FPM)
 │   ├── app/Http/Controllers/   # API controllers (per resource)
+│   │   ├── AttendanceController.php     # mark, templates, daily-summary, exceptions
+│   │   ├── AadhaarController.php        # extract, upload, download (role-scoped)
+│   │   ├── WorkerController.php         # CRUD + fingerprint + stats + photo
+│   │   ├── WorkerIdDocumentController.php # store/download worker docs (images + PDF)
+│   │   ├── WorkerAssignmentController.php # deploy workers, current/previous filter
+│   │   └── ...
 │   ├── app/Models/             # Eloquent models
 │   ├── app/Services/           # AuditService, BiometricService
 │   ├── database/migrations/    # Full schema history
@@ -24,12 +30,12 @@ attendance_system/
 │
 ├── frontend/                   # React 18 + Vite + Tailwind CSS
 │   └── src/
-│       ├── pages/              # Route-level components
+│       ├── pages/
 │       │   ├── companies/      # CompanyList
-│       │   ├── vendors/        # VendorList, VendorApproval, VendorCompanyAccess
-│       │   ├── workers/        # WorkerList, WorkerRegister
-│       │   ├── users/          # UserList (gate user management)
-│       │   └── attendance/     # AttendanceMark, AttendanceList, Exceptions
+│       │   ├── vendors/        # VendorList (role-aware tabs), VendorApproval, VendorCompanyAccess
+│       │   ├── workers/        # WorkerList, WorkerDetail, WorkerRegister, WorkerAssign
+│       │   ├── users/          # UserList
+│       │   └── attendance/     # AttendanceMark, AttendanceList (daily summary), Exceptions
 │       └── components/         # Sidebar, FingerprintCapture, etc.
 │
 ├── pdf-service/                # Python FastAPI — Aadhaar PDF extraction
@@ -66,20 +72,20 @@ down.bat
 
 ### 3. Access the application
 
-| Service    | URL                      |
-|------------|--------------------------|
-| App (UI)   | http://localhost          |
-| API        | http://localhost/api      |
-| PDF Service | http://localhost:8001    |
+| Service     | URL                   |
+|-------------|-----------------------|
+| App (UI)    | http://localhost      |
+| API         | http://localhost/api  |
+| PDF Service | http://localhost:8001 |
 
 ### Default Login Credentials
 
-| Role          | Email                  | Password     |
-|---------------|------------------------|--------------|
-| Super Admin   | superadmin@ams.local   | Admin@12345  |
-| Company Admin | company@ams.local      | Admin@12345  |
-| Gate User     | gate@ams.local         | Admin@12345  |
-| Vendor Admin  | vendor@ams.local       | Admin@12345  |
+| Role          | Email                | Password    |
+|---------------|----------------------|-------------|
+| Super Admin   | superadmin@ams.local | Admin@12345 |
+| Company Admin | company@ams.local    | Admin@12345 |
+| Gate User     | gate@ams.local       | Admin@12345 |
+| Vendor Admin  | vendor@ams.local     | Admin@12345 |
 
 ---
 
@@ -101,8 +107,9 @@ Company Admin
           ▼
 Vendor Admin / Operator
   └── Registers Workers
-        ├── Uploads Aadhaar PDF (auto-extracted)
-        └── Enrolls Fingerprint (via SecuGen scanner)
+        ├── Uploads Aadhaar PDF (auto-extracted via Python)
+        ├── Enrolls Fingerprint (via SecuGen scanner)
+        └── Deploys Worker to Company (WorkerAssign)
           │
           ▼
 Company Admin
@@ -114,33 +121,54 @@ Gate User (at company site)
         → Attendance logged against: Worker ↔ Vendor ↔ Company
           │
           ▼
-Vendor Admin can view all attendance for their workers across companies
-Company Admin / Gate can view all attendance at their company
+Vendor Admin / Company Admin
+  └── Views attendance in daily-summary view
+      Click worker row → Worker Detail analytics page
+      (stats, monthly breakdown, deployment history)
 ```
 
 ---
 
 ## Roles & Permissions
 
-| Role             | What they can do                                                              |
-|------------------|-------------------------------------------------------------------------------|
-| `super_admin`    | Full access — create companies, vendors, all users, view everything           |
-| `company_admin`  | Approve/reject vendors, create gate users, view attendance at their company   |
-| `company_gate`   | Mark fingerprint attendance at their company only                             |
-| `vendor_admin`   | Register/manage workers, request company access, view worker attendance       |
-| `vendor_operator`| Register workers only                                                         |
+| Role              | What they can do                                                              |
+|-------------------|-------------------------------------------------------------------------------|
+| `super_admin`     | Full access — create companies, vendors, all users, view everything           |
+| `company_admin`   | Approve/reject vendors, create gate users, view attendance at their company   |
+| `company_gate`    | Mark fingerprint attendance at their company only                             |
+| `vendor_admin`    | Register/manage workers, deploy to companies, view worker attendance          |
+| `vendor_operator` | Register workers only                                                         |
+
+---
+
+## Key Pages & Features
+
+### Workers
+- **WorkerList** (`/workers`) — All / Current / Previous tabs; clickable rows → Worker Detail; ID document column with download links for Aadhaar PDF and other docs
+- **WorkerDetail** (`/workers/:id`) — Analytics page: total days, avg hours, monthly breakdown. Company users see only their company's data. Vendor users get a company dropdown to filter per-company; includes deployment history
+- **WorkerRegister** (`/workers/register` or `/workers/:id/edit`) — 4-step wizard; edit mode shows existing Aadhaar/document download links
+- **WorkerAssign** (`/workers/assign`) — Deploy workers to companies; Current / Previous / All tabs; can cancel even locked deployments if worker is currently checked OUT
+
+### Attendance
+- **AttendanceList** (`/attendance`) — Daily summary grouped view: per worker per day shows First IN, Last OUT, duration, and status (Inside / Done / Incomplete). All / Current Workers / Previous Workers tabs. Row click → Worker Detail
+- **AttendanceMark** (`/attendance/mark`) — Fingerprint IN/OUT with SecuGen scanner
+- **Exceptions** (`/attendance/exceptions`) — Workers currently checked IN without an OUT
+
+### Vendors
+- **VendorList** (`/vendors`) — Super admin: full global list + create/edit. Company users: approval-status tabs (Approved / Pending / Suspended / Rejected / All) showing only their company's vendor relationships
+- **VendorApproval** (`/vendors/approval`) — Pending / Approved / Rejected / Suspended tabs with counts; approve, reject with reason, suspend, re-approve
+- **VendorCompanyAccess** (`/vendors/company-access`) — Vendor-side: request access to companies, track statuses
 
 ---
 
 ## Aadhaar Integration
 
-The system integrates with UIDAI's official masked Aadhaar PDF:
-
 1. On Worker Register page, click **Open UIDAI Portal**
 2. Worker logs in on UIDAI site, completes OTP, downloads masked Aadhaar PDF
-3. Vendor uploads the PDF to AMS
-4. Python service (`pdf-service`) extracts: name, DOB, gender, address, PIN, and photo
-5. Form auto-fills; vendor reviews and saves
+3. Vendor uploads the PDF — Python service extracts: name, DOB, gender, address, PIN, photo
+4. Form auto-fills; vendor reviews and saves
+5. PDF stored on private disk (never web-accessible); served via authenticated download endpoint
+6. Company users can download a worker's Aadhaar PDF if the worker has ever been deployed to or attended at their company
 
 **PDF Password format:** first 4 letters of name (uppercase) + birth year
 Example: Name "Narendra", Born 1955 → password `NARE1955`
@@ -148,8 +176,6 @@ Example: Name "Narendra", Born 1955 → password `NARE1955`
 ---
 
 ## Fingerprint Integration (SecuGen SGIBIOSRV)
-
-AMS uses SecuGen's **SGIBIOSRV** Windows service for fingerprint capture and 1:N matching.
 
 ### Gate PC Setup
 1. Install SecuGen SGIBIOSRV (included in FDx SDK)
@@ -168,69 +194,86 @@ Gate PC Browser
 
 ---
 
-## Vendor–Company Approval Flow
+## Worker Deployment (WorkerAssign)
 
-```
-Vendor Admin                   Company Admin
-     │                               │
-     │  (Company Access page)        │
-     ├─── Send Request ──────────────►│
-     │                               │  (Vendor Approvals page)
-     │◄── Approved / Rejected ───────┤
-     │                               │
-     │  If Approved:                 │
-     │  Workers' fingerprints are    │
-     │  available at gate scanner    │
-     │                               │
-```
-
-No manual worker-to-company assignment needed once the vendor is approved.
+Workers can be explicitly deployed to specific companies with a date range. The deployment system:
+- Sets `is_locked = true` on first attendance (prevents premature cancel)
+- Cancellation allowed even when locked, **provided the worker is not currently checked IN**
+- `/workers` and `/attendance` endpoints support `deployment=current` or `deployment=previous` param for tab filtering
 
 ---
 
 ## Docker Services
 
-| Container        | Purpose                    | Port           |
-|------------------|----------------------------|----------------|
-| `ams_nginx`      | Reverse proxy              | 80             |
-| `ams_backend`    | Laravel PHP-FPM            | 9000 (internal)|
-| `ams_frontend`   | React/Vite dev server      | 5173           |
-| `ams_mysql`      | MySQL 8                    | 3306           |
-| `ams_redis`      | Cache & queue broker       | 6379           |
-| `ams_pdf_service`| Python Aadhaar extractor   | 8001           |
-| `ams_queue`      | Laravel queue worker       | —              |
+| Container         | Purpose                    | Port            |
+|-------------------|----------------------------|-----------------|
+| `ams_nginx`       | Reverse proxy              | 80              |
+| `ams_backend`     | Laravel PHP-FPM            | 9000 (internal) |
+| `ams_frontend`    | React/Vite dev server      | 5173            |
+| `ams_mysql`       | MySQL 8                    | 3306            |
+| `ams_redis`       | Cache & queue broker       | 6379            |
+| `ams_pdf_service` | Python Aadhaar extractor   | 8001            |
+| `ams_queue`       | Laravel queue worker       | —               |
+
+### Pushing backend changes (no volume mount)
+```bash
+# Copy changed file(s) into the running container
+docker cp backend/app/Http/Controllers/WorkerController.php \
+  ams_backend:/var/www/html/app/Http/Controllers/WorkerController.php
+
+# Clear Laravel's opcode cache
+docker exec ams_backend php artisan optimize:clear
+```
 
 ---
 
 ## Key API Endpoints
 
 ```
-POST /api/auth/login                              Login (returns Sanctum token)
-GET  /api/auth/me                                 Current user info
+POST /api/auth/login                                      Login (returns Sanctum token)
+GET  /api/auth/me                                         Current user info
 
-GET  /api/companies                               List companies
-POST /api/companies                               Create company (super_admin)
-POST /api/companies/{id}/vendors/{vid}/approve    Approve vendor
-POST /api/companies/{id}/vendors/{vid}/reject     Reject vendor (requires reason)
-POST /api/companies/{id}/vendors/{vid}/suspend    Suspend vendor
+GET  /api/companies                                       List companies
+POST /api/companies                                       Create company (super_admin)
+GET  /api/companies/{id}/vendors                         Company-vendor relationships (with pivot status)
+POST /api/companies/{id}/vendors/{vid}/approve           Approve vendor
+POST /api/companies/{id}/vendors/{vid}/reject            Reject vendor (requires reason)
+POST /api/companies/{id}/vendors/{vid}/suspend           Suspend vendor
 
-GET  /api/vendors                                 List vendors (scoped by role)
-POST /api/vendors/{id}/request-company/{cid}      Vendor requests company access
-GET  /api/vendors/{id}/available-companies        All companies + request status
+GET  /api/vendors                                         List vendors (scoped by role)
+POST /api/vendors/{id}/request-company/{cid}              Vendor requests company access
+GET  /api/vendors/{id}/available-companies                All companies + request status
 
-POST /api/workers                                 Register worker
-POST /api/workers/{id}/fingerprint               Enroll fingerprint
-POST /api/aadhaar/extract                         Extract data from Aadhaar PDF
-POST /api/aadhaar/upload/{worker}                 Upload Aadhaar PDF
+GET  /api/workers                                         List workers (?deployment=current|previous)
+POST /api/workers                                         Register worker
+GET  /api/workers/{id}                                    Worker detail
+GET  /api/workers/{id}/stats                              Worker analytics (?company_id=X)
+GET  /api/workers/{id}/photo                              Serve worker photo (named: worker.photo)
+POST /api/workers/{id}/activate                           Activate worker
+POST /api/workers/{id}/deactivate                         Deactivate worker
+POST /api/workers/{id}/fingerprint                        Enroll fingerprint
 
-GET  /api/users                                   List users (role-scoped)
-POST /api/users                                   Create user
+GET  /api/workers/{id}/id-documents                       List worker ID documents
+POST /api/workers/{id}/id-documents                       Add ID document (image or PDF)
+GET  /api/workers/{id}/id-documents/{doc}/download        Download ID document file
 
-GET  /api/attendance/worker-templates             Fingerprint templates for approved vendors
-POST /api/attendance/mark                         Mark IN/OUT
-GET  /api/attendance                              Attendance log (role-scoped)
-GET  /api/attendance/exceptions                   Workers with IN but no OUT
-GET  /api/attendance/report                       Date-range report
+POST /api/aadhaar/extract                                 Extract data from Aadhaar PDF (no storage)
+POST /api/aadhaar/upload/{worker}                         Upload Aadhaar PDF (stored securely)
+GET  /api/aadhaar/download/{worker}                       Download stored Aadhaar PDF (role-scoped)
+
+GET  /api/users                                           List users (role-scoped)
+POST /api/users                                           Create user
+
+GET  /api/attendance/worker-templates                     Fingerprint templates for approved vendors
+POST /api/attendance/mark                                 Mark IN/OUT
+GET  /api/attendance                                      Attendance log (?deployment=current|previous)
+GET  /api/attendance/daily-summary                        Grouped daily summary (per worker per day)
+GET  /api/attendance/exceptions                           Workers with IN but no OUT
+GET  /api/attendance/report                               Date-range report
+
+GET  /api/workers/assign                                  Worker assignments (?deployment=current|previous)
+POST /api/workers/assign                                  Create assignment
+DELETE /api/workers/assign/{id}                          Cancel assignment
 ```
 
 ---
@@ -241,8 +284,9 @@ GET  /api/attendance/report                       Date-range report
 - **Authorization:** Role middleware on every route + controller-level scoping
 - **Aadhaar:** Only last 4 digits stored in DB; full number never persisted
 - **Fingerprint templates:** AES-encrypted at rest via Laravel `encrypt()`
-- **Aadhaar PDFs:** Stored on private disk (not web-accessible), served via signed URL
-- **Audit log:** Every sensitive action (worker created, fingerprint enrolled, attendance marked) logged with user ID, timestamp, and IP
+- **Aadhaar PDFs:** Stored on private disk (not web-accessible), served via authenticated download
+- **ID documents:** Stored on private disk; company users may download only for workers deployed at their company
+- **Audit log:** Every sensitive action (worker created, fingerprint enrolled, Aadhaar downloaded, attendance marked) logged with user ID, timestamp, and IP
 - **HTTPS:** Required in production — add SSL certificate to nginx config
 
 ---

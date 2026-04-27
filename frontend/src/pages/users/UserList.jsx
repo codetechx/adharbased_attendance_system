@@ -53,8 +53,12 @@ export default function UserList() {
   const [showPass, setShowPass] = useState(false);
 
   const isCompanyAdmin = authUser?.role === "company_admin";
+  const isVendorAdmin  = authUser?.role === "vendor_admin";
+
   const availableRoles = isCompanyAdmin
-    ? [{ value: "company_gate", label: "Company Gate" }]
+    ? [{ value: "company_gate",    label: "Company Gate" }]
+    : isVendorAdmin
+    ? [{ value: "vendor_operator", label: "Vendor Operator" }]
     : ALL_ROLES;
 
   const isGateRole = form.role === "company_gate" || isCompanyAdmin;
@@ -68,17 +72,18 @@ export default function UserList() {
   const { data: companies = [] } = useQuery({
     queryKey: ["companies-simple"],
     queryFn:  () => api.get("/companies").then(r => r.data?.data ?? r.data),
-    enabled:  !isCompanyAdmin,
+    enabled:  !isCompanyAdmin && !isVendorAdmin,
   });
 
   const { data: vendors = [] } = useQuery({
     queryKey: ["vendors-simple"],
     queryFn:  () => api.get("/vendors").then(r => r.data?.data ?? r.data),
-    enabled:  !isCompanyAdmin,
+    enabled:  !isCompanyAdmin && !isVendorAdmin,
   });
 
   const openCreate = () => {
-    setForm({ ...EMPTY, role: isCompanyAdmin ? "company_gate" : "" });
+    const defaultRole = isCompanyAdmin ? "company_gate" : isVendorAdmin ? "vendor_operator" : "";
+    setForm({ ...EMPTY, role: defaultRole });
     setShowPass(false);
     setModal("create");
   };
@@ -93,8 +98,8 @@ export default function UserList() {
   };
   const close = () => setModal(null);
 
-  const needsCompany = !isCompanyAdmin && ["company_admin", "company_gate"].includes(form.role);
-  const needsVendor  = !isCompanyAdmin && ["vendor_admin", "vendor_operator"].includes(form.role);
+  const needsCompany = !isCompanyAdmin && !isVendorAdmin && ["company_admin", "company_gate"].includes(form.role);
+  const needsVendor  = !isCompanyAdmin && !isVendorAdmin && ["vendor_admin", "vendor_operator"].includes(form.role);
 
   const createMutation = useMutation({
     mutationFn: (data) => api.post("/users", data),
@@ -149,16 +154,18 @@ export default function UserList() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {isCompanyAdmin ? "Users" : "User Management"}
+            {isVendorAdmin ? "Operators" : isCompanyAdmin ? "Users" : "User Management"}
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            {isCompanyAdmin
+            {isVendorAdmin
+              ? "Manage operator accounts for your vendor"
+              : isCompanyAdmin
               ? "Manage gate and department users who mark attendance"
               : "Create logins for company admins, gate, department, and vendor staff"}
           </p>
         </div>
         <button onClick={openCreate} className="btn-primary">
-          <Plus size={16} /> {isCompanyAdmin ? "Add User" : "Add User"}
+          <Plus size={16} /> {isVendorAdmin ? "Add Operator" : "Add User"}
         </button>
       </div>
 
@@ -171,9 +178,9 @@ export default function UserList() {
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
-                {!isCompanyAdmin && <th className="text-left px-4 py-3 font-medium text-gray-600">Role</th>}
-                {!isCompanyAdmin && <th className="text-left px-4 py-3 font-medium text-gray-600">Linked To</th>}
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Location</th>
+                {!isCompanyAdmin && !isVendorAdmin && <th className="text-left px-4 py-3 font-medium text-gray-600">Role</th>}
+                {!isCompanyAdmin && !isVendorAdmin && <th className="text-left px-4 py-3 font-medium text-gray-600">Linked To</th>}
+                {!isVendorAdmin && <th className="text-left px-4 py-3 font-medium text-gray-600">Location</th>}
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -183,31 +190,33 @@ export default function UserList() {
                 <tr key={u.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900">{u.name}</td>
                   <td className="px-4 py-3 text-gray-600">{u.email}</td>
-                  {!isCompanyAdmin && (
+                  {!isCompanyAdmin && !isVendorAdmin && (
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[u.role] ?? "bg-gray-100 text-gray-600"}`}>
                         {u.role?.replace(/_/g, " ")}
                       </span>
                     </td>
                   )}
-                  {!isCompanyAdmin && (
+                  {!isCompanyAdmin && !isVendorAdmin && (
                     <td className="px-4 py-3 text-gray-500 text-xs">
                       {u.company?.name ?? u.vendor?.name ?? <span className="text-gray-300">—</span>}
                     </td>
                   )}
-                  <td className="px-4 py-3">
-                    {u.location_name ? (
-                      <div className="flex items-center gap-1.5">
-                        <MapPin size={12} className="text-brand-500 shrink-0" />
-                        <div>
-                          <p className="text-gray-800 font-medium leading-none">{u.location_name}</p>
-                          <p className="text-gray-400 text-xs mt-0.5">{locationTypeLabel(u.location_type)}</p>
+                  {!isVendorAdmin && (
+                    <td className="px-4 py-3">
+                      {u.location_name ? (
+                        <div className="flex items-center gap-1.5">
+                          <MapPin size={12} className="text-brand-500 shrink-0" />
+                          <div>
+                            <p className="text-gray-800 font-medium leading-none">{u.location_name}</p>
+                            <p className="text-gray-400 text-xs mt-0.5">{locationTypeLabel(u.location_type)}</p>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <span className="text-gray-300">—</span>
-                    )}
-                  </td>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <button
                       onClick={() => toggleMutation.mutate({ id: u.id, is_active: !u.is_active })}
@@ -235,8 +244,12 @@ export default function UserList() {
               ))}
               {!users.length && (
                 <tr>
-                  <td colSpan={isCompanyAdmin ? 5 : 7} className="px-4 py-8 text-center text-gray-400">
-                    {isCompanyAdmin ? "No users yet. Add one to allow attendance marking." : "No users yet."}
+                  <td colSpan={isVendorAdmin ? 4 : isCompanyAdmin ? 5 : 7} className="px-4 py-8 text-center text-gray-400">
+                    {isVendorAdmin
+                      ? "No operators yet. Add one to allow attendance scanning."
+                      : isCompanyAdmin
+                      ? "No users yet. Add one to allow attendance marking."
+                      : "No users yet."}
                   </td>
                 </tr>
               )}
@@ -252,8 +265,8 @@ export default function UserList() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
               <h2 className="font-semibold text-gray-900">
                 {modal === "create"
-                  ? (isCompanyAdmin ? "Add User" : "Add User")
-                  : "Edit User"}
+                  ? (isVendorAdmin ? "Add Operator" : "Add User")
+                  : (isVendorAdmin ? "Edit Operator" : "Edit User")}
               </h2>
               <button onClick={close}><X size={18} className="text-gray-400" /></button>
             </div>
@@ -261,7 +274,7 @@ export default function UserList() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
 
               {/* ── 1. Role ── */}
-              {!isCompanyAdmin && (
+              {!isCompanyAdmin && !isVendorAdmin && (
                 <div>
                   <label className="label">Role</label>
                   <select className="input" required {...field("role")}>

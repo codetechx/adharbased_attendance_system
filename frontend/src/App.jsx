@@ -44,9 +44,9 @@ export default function App() {
           </PrivateRoute>
         } />
 
-        {/* Users — super admin (all users) and company admin (gate users only) */}
+        {/* Users — super_admin (all), company_admin (gate users), vendor_admin (operators) */}
         <Route path="users" element={
-          <PrivateRoute roles={["super_admin", "company_admin"]}>
+          <PrivateRoute roles={["super_admin", "company_admin", "vendor_admin"]}>
             <UserList />
           </PrivateRoute>
         } />

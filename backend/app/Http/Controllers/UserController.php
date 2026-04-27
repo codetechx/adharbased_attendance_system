@@ -18,9 +18,13 @@ class UserController extends Controller
 
         $users = User::select(['id','name','email','role','company_id','vendor_id','phone','is_active','location_type','location_name'])
             ->with(['company:id,name', 'vendor:id,name'])
-            // company_admin only sees their own gate users
+            // company_admin sees only their own gate users
             ->when($auth->role === 'company_admin', fn($q) =>
                 $q->where('company_id', $auth->company_id)->where('role', 'company_gate')
+            )
+            // vendor_admin sees only their own operators
+            ->when($auth->role === 'vendor_admin', fn($q) =>
+                $q->where('vendor_id', $auth->vendor_id)->where('role', 'vendor_operator')
             )
             // super_admin can filter freely
             ->when($auth->isSuperAdmin() && $request->role,       fn($q, $r)  => $q->where('role', $r))
@@ -37,7 +41,6 @@ class UserController extends Controller
         $auth = $request->user();
 
         if ($auth->role === 'company_admin') {
-            // company_admin can only create gate users for their own company
             $data = $request->validate([
                 'name'          => 'required|string|max:100',
                 'email'         => 'required|email|unique:users',
@@ -49,6 +52,21 @@ class UserController extends Controller
             $data['role']       = 'company_gate';
             $data['company_id'] = $auth->company_id;
             $data['is_active']  = true;
+            $user = User::create($data);
+            $this->audit->log($auth->id, 'user_created', User::class, $user->id);
+            return response()->json($user, 201);
+        }
+
+        if ($auth->role === 'vendor_admin') {
+            $data = $request->validate([
+                'name'     => 'required|string|max:100',
+                'email'    => 'required|email|unique:users',
+                'password' => ['required', Password::min(8)->letters()->numbers()],
+                'phone'    => 'nullable|string|max:15',
+            ]);
+            $data['role']      = 'vendor_operator';
+            $data['vendor_id'] = $auth->vendor_id;
+            $data['is_active'] = true;
             $user = User::create($data);
             $this->audit->log($auth->id, 'user_created', User::class, $user->id);
             return response()->json($user, 201);
@@ -101,6 +119,22 @@ class UserController extends Controller
             return response()->json($user->fresh());
         }
 
+        if ($auth->role === 'vendor_admin') {
+            if ($user->vendor_id !== $auth->vendor_id || $user->role !== 'vendor_operator') {
+                abort(403, 'You can only edit operators for your own vendor.');
+            }
+
+            $data = $request->validate([
+                'name'      => 'sometimes|string|max:100',
+                'email'     => "sometimes|email|unique:users,email,{$user->id}",
+                'phone'     => 'nullable|string|max:15',
+                'is_active' => 'sometimes|boolean',
+            ]);
+            $user->update($data);
+            $this->audit->log($auth->id, 'user_updated', User::class, $user->id);
+            return response()->json($user->fresh());
+        }
+
         $data = $request->validate([
             'name'          => 'sometimes|string|max:100',
             'email'         => "sometimes|email|unique:users,email,{$user->id}",
@@ -129,6 +163,10 @@ class UserController extends Controller
 
         if ($auth->role === 'company_admin' && ($user->company_id !== $auth->company_id || $user->role !== 'company_gate')) {
             abort(403, 'You can only delete gate users for your own company.');
+        }
+
+        if ($auth->role === 'vendor_admin' && ($user->vendor_id !== $auth->vendor_id || $user->role !== 'vendor_operator')) {
+            abort(403, 'You can only delete operators for your own vendor.');
         }
 
         $user->delete();

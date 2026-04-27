@@ -584,12 +584,56 @@
   </div>
 
   <div class="card">
-    <h3>6.3 — View Attendance &amp; Exceptions</h3>
+    <h3>6.2 — View Your Vendors</h3>
+    <p style="margin-bottom:14px">Sidebar → Administration → <strong>Vendors</strong></p>
+    <p>As a Company Admin you see only vendors associated with your company, filtered by approval status:</p>
+    <table style="margin-top:12px">
+      <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Approved</strong></td><td>Vendors with active access — their workers can attend your gate</td></tr>
+        <tr><td><strong>Pending</strong></td><td>Vendors awaiting your approval</td></tr>
+        <tr><td><strong>Suspended</strong></td><td>Vendors temporarily blocked</td></tr>
+        <tr><td><strong>Rejected</strong></td><td>Vendors you have declined</td></tr>
+        <tr><td><strong>All</strong></td><td>Every vendor in your relationship list</td></tr>
+      </tbody>
+    </table>
+    <div class="callout tip" style="margin-top:14px">
+      <strong>💡 Two badges per card:</strong> Each vendor card shows the vendor's own status (active/inactive) AND their approval status for your company (Approved, Pending, etc.).
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>6.3 — View Workers at Your Company</h3>
+    <p style="margin-bottom:14px">Sidebar → Workers → <strong>All Workers</strong></p>
+    <table>
+      <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
+      <tbody>
+        <tr><td><strong>All Workers</strong></td><td>Every worker ever associated with your company</td></tr>
+        <tr><td><strong>Current</strong></td><td>Workers actively deployed and present at your site today</td></tr>
+        <tr><td><strong>Previous</strong></td><td>Workers who attended previously but are no longer deployed</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:12px"><strong>Click any worker row</strong> to open their <strong>Worker Detail</strong> analytics page — showing total days worked, average hours, monthly breakdown, and recent attendance, all scoped to your company.</p>
+    <p style="margin-top:10px">The list also shows an <strong>ID Document</strong> column. Click <strong>Download</strong> to download the worker's Aadhaar PDF or other identity document.</p>
+  </div>
+
+  <div class="card">
+    <h3>6.4 — View Attendance &amp; Exceptions</h3>
     <table>
       <thead><tr><th>Page</th><th>Where</th><th>What it shows</th></tr></thead>
       <tbody>
-        <tr><td><strong>Attendance Log</strong></td><td>Sidebar → Attendance → Attendance Log</td><td>All IN/OUT records for your company, filter by date or worker</td></tr>
-        <tr><td><strong>Exceptions</strong></td><td>Sidebar → Attendance → Exceptions</td><td>Workers who marked IN but have <em>not</em> marked OUT — useful for end-of-day checks</td></tr>
+        <tr>
+          <td><strong>Attendance Log</strong></td>
+          <td>Sidebar → Attendance → Attendance Log</td>
+          <td>
+            <strong>Daily summary view</strong> — one row per worker per day showing: First IN time, Last OUT time, total duration, status (Inside / Done / Incomplete). Filter by date, worker name, or use All / Current / Previous tabs. Click any row to open that worker's full detail page.
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Exceptions</strong></td>
+          <td>Sidebar → Attendance → Exceptions</td>
+          <td>Workers who are currently <em>inside</em> (marked IN but no OUT yet) — useful for end-of-day checks.</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -622,7 +666,7 @@
         <div class="label">Approved</div>
         <div class="desc">Access granted. Workers can attend</div>
       </div>
-      <div class="status-box" style="background:#fef2f2; color:#dc2626">
+      <div class="status-box" style="background:#fef2f2; color:#b91c1c">
         <div class="icon">✗</div>
         <div class="label">Rejected</div>
         <div class="desc">Read the reason. Fix and re-request</div>
@@ -735,6 +779,57 @@
         <tr><td>⚫ Inactive</td><td>Manually disabled</td><td>Re-activate from the Workers list if needed</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <div class="card">
+    <h3>7.4 — View Your Workers &amp; Worker Detail</h3>
+    <p style="margin-bottom:14px">Sidebar → Workers → <strong>All Workers</strong></p>
+    <p>The Workers list now has three tabs to help you focus:</p>
+    <table style="margin:12px 0">
+      <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
+      <tbody>
+        <tr><td><strong>All Workers</strong></td><td>All workers registered under your vendor</td></tr>
+        <tr><td><strong>Current</strong></td><td>Workers with active deployments at a company today</td></tr>
+        <tr><td><strong>Previous</strong></td><td>Workers who attended but are no longer actively deployed</td></tr>
+      </tbody>
+    </table>
+    <p>The list shows fingerprint status, masked Aadhaar, and an <strong>ID Document</strong> column — click <strong>Download</strong> to get the Aadhaar PDF or other document.</p>
+    <p style="margin-top:12px"><strong>Click any worker row</strong> to open the <strong>Worker Detail</strong> page:</p>
+    <ul style="margin-top:8px; padding-left:20px; line-height:1.9; font-size:.9rem; color:#374151">
+      <li>Select a company from the dropdown at the top to see that worker's history at each approved company</li>
+      <li>Stats cards: total days, average daily hours, total IN/OUT count</li>
+      <li>Monthly breakdown table with missed OUT count</li>
+      <li>Deployment history for the selected company</li>
+      <li>Recent attendance log (last 10 events)</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>7.5 — Deploy Workers to a Company</h3>
+    <p style="margin-bottom:14px">Sidebar → Workers → <strong>Deploy Workers</strong></p>
+    <p>After a company approves your vendor, deploy specific workers with a start and end date. The deployment list has <strong>Current / Previous / All</strong> tabs.</p>
+    <div class="callout tip" style="margin-top:12px">
+      <strong>💡 Cancelling a deployment:</strong> You can cancel an active deployment even after attendance has been marked — <em>as long as the worker is not currently checked IN</em>. If the worker is inside, have them check OUT first, then cancel.
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>7.6 — Attendance Log</h3>
+    <p style="margin-bottom:14px">Sidebar → Attendance → <strong>Attendance Log</strong></p>
+    <p>The attendance log now shows a <strong>daily summary</strong> — one row per worker per day across all companies:</p>
+    <table style="margin-top:12px">
+      <thead><tr><th>Column</th><th>What it shows</th></tr></thead>
+      <tbody>
+        <tr><td>Worker</td><td>Name and vendor</td></tr>
+        <tr><td>Company</td><td>Which company the attendance was at</td></tr>
+        <tr><td>Location</td><td>Gate(s) used that day</td></tr>
+        <tr><td>First IN</td><td>Earliest check-in time (green)</td></tr>
+        <tr><td>Last OUT</td><td>Latest check-out time (blue)</td></tr>
+        <tr><td>Duration</td><td>Total time from first IN to last OUT</td></tr>
+        <tr><td>Status</td><td>Inside / Done / Incomplete (no OUT recorded)</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:12px">Use <strong>All / Current / Previous</strong> tabs and date/name filters. Click any row to open that worker's full analytics page.</p>
   </div>
 </section>
 
@@ -885,6 +980,7 @@
         <li>Register at least one worker with Aadhaar PDF</li>
         <li>Enroll fingerprint (scanner must be connected)</li>
         <li>Confirm worker status shows Active</li>
+        <li>Go to Deploy Workers → assign worker to the company with a date range</li>
       </ul>
     </div>
 
@@ -969,6 +1065,26 @@
   <details>
     <summary>The Aadhaar PDF is not uploading / extraction failed.</summary>
     <div>Make sure the PDF is the official masked Aadhaar downloaded from the UIDAI portal (<code>myaadhaar.uidai.gov.in</code>). Check that you are entering the correct password: first 4 letters of the worker's <em>first name</em> in UPPERCASE + the 4-digit birth year (e.g. <code>NARE1955</code>). If the issue persists, contact your IT administrator.</div>
+  </details>
+
+  <details>
+    <summary>How do I view a worker's full attendance history?</summary>
+    <div>Click any worker row in the <strong>Workers list</strong> or in the <strong>Attendance Log</strong> to open the <strong>Worker Detail</strong> analytics page. It shows total days worked, average hours, a monthly breakdown table, deployment history, and recent attendance — all scoped to your company. Vendor Admins can also use the company dropdown to switch between companies and compare history across sites.</div>
+  </details>
+
+  <details>
+    <summary>Can I download a worker's Aadhaar or ID document?</summary>
+    <div>Yes. The <strong>Workers list</strong> has an "ID Document" column with a Download button for each worker's primary document. The same download is available in the worker's edit page (Step 0). Vendor users can always download their workers' documents. Company users can download if the worker has been deployed to or has attended their company.</div>
+  </details>
+
+  <details>
+    <summary>I cancelled a worker's deployment — why do they still appear in Previous Workers?</summary>
+    <div>This is correct behaviour. Once a worker has marked attendance at your company, they will always appear in the <strong>Previous Workers</strong> tab — even if the deployment is later cancelled. This ensures a complete attendance history is maintained. The Previous tab shows all workers who ever worked at your site.</div>
+  </details>
+
+  <details>
+    <summary>Can I cancel a deployment after attendance has been marked?</summary>
+    <div>Yes — as long as the worker is not currently checked IN. If the worker's most recent action is an OUT (or they haven't attended yet), the Cancel button will work. If the worker is currently inside (last action was IN), have them check OUT first at the gate, then you can cancel the deployment.</div>
   </details>
 </section>
 

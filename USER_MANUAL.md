@@ -1,8 +1,8 @@
 # AMS User Manual
 ## Workforce Attendance Management System
 
-**Version:** 1.0  
-**Audience:** Company Admins, Vendor Admins, Gate Users  
+**Version:** 2.0
+**Audience:** Company Admins, Vendor Admins, Gate Users
 
 ---
 
@@ -54,8 +54,8 @@ AMS has four types of users. Each person sees only what is relevant to their job
           │ vendors work   │   │ (Aadhaar + finger-  │
           │ at their site  │   │  print enrollment)  │
           │                │   │                     │
-          │ Creates gate   │   │ Requests access to  │
-          │ users          │   │ companies           │
+          │ Creates gate   │   │ Deploys workers     │
+          │ users          │   │ to companies        │
           └───────┬────────┘   └─────────────────────┘
                   │
           ┌───────▼────────┐
@@ -73,7 +73,7 @@ AMS has four types of users. Each person sees only what is relevant to their job
 |------|-------------|--------------|
 | **Super Admin** | System owner / IT team | Creates companies and vendors, manages all accounts |
 | **Company Admin** | HR Manager / Site Manager at the company | Approves vendors, creates gate users, views attendance |
-| **Vendor Admin** | Contractor company manager | Registers workers, requests company access, views worker attendance |
+| **Vendor Admin** | Contractor company manager | Registers workers, deploys to companies, views worker attendance |
 | **Gate User** | Security guard / HR at the gate | Scans fingerprints to mark workers IN and OUT |
 
 ---
@@ -90,38 +90,14 @@ STEP 3: Company Admin approves the Vendor
 STEP 4: Vendor Admin registers Workers
          (Aadhaar PDF upload + Fingerprint scan)
          ↓
-STEP 5: Company Admin creates Gate User accounts
+STEP 5: Vendor Admin deploys Workers to a Company (with date range)
          ↓
-STEP 6: Gate User scans fingerprints → Attendance marked automatically
+STEP 6: Company Admin creates Gate User accounts
          ↓
-STEP 7: Vendor Admin & Company Admin view attendance reports
-```
-
-### Data Flow Diagram
-
-```
-  VENDOR SIDE                          COMPANY SIDE
-  ───────────                          ────────────
-
-  [Vendor Admin]                       [Company Admin]
-       │                                     │
-       │ Registers Workers                   │ Creates Gate Users
-       │ (Aadhaar + Fingerprint)             │
-       │                                     │
-       │──── Sends Access Request ──────────►│
-       │                                     │
-       │◄─── Company Approves ───────────────│
-       │                                     │
-       │                                     │ [Gate User at Entry]
-       │                                     │      │
-       │                                     │      │ Worker places
-       │                                     │      │ finger on scanner
-       │                                     │      │
-       │◄═══════ Attendance Recorded ════════════════╝
-       │         (Worker + Vendor + Company + Time)
-       │
-       │ Views attendance report
-       │ for all their workers
+STEP 7: Gate User scans fingerprints → Attendance marked automatically
+         ↓
+STEP 8: Vendor Admin & Company Admin view attendance reports
+         Click any worker row → full Worker Detail analytics page
 ```
 
 ---
@@ -138,19 +114,7 @@ Your IT team will provide the exact URL.
 
 ### Step 2: Login Screen
 
-You will see a login screen. Enter your **email address** and **password** provided by the Super Admin.
-
-```
-┌─────────────────────────────────┐
-│         AMS Login               │
-│                                 │
-│  Email: [________________]      │
-│                                 │
-│  Password: [_______________]    │
-│                                 │
-│  [      Sign In      ]          │
-└─────────────────────────────────┘
-```
+Enter your **email address** and **password** provided by the Super Admin.
 
 ### Step 3: Dashboard
 
@@ -169,42 +133,11 @@ The Super Admin sets up the system for everyone. This is typically done once dur
 **Where:** Sidebar → Administration → **Companies**
 
 1. Click **Add Company**
-2. Fill in the company details:
-   - Company Name (e.g., "ABC Manufacturing Pvt Ltd")
-   - Company Code (short code, e.g., "ABCM")
-   - Address, City, State, PIN
-   - Contact Person, Email, Phone
-   - GST Number (optional)
-3. Fill in **Company Admin Login** (the person who will manage this company in AMS):
-   - Admin Name
-   - Login Email
-   - Password (click the refresh icon to auto-generate a strong password)
-   - **Copy the password** before saving — it will not be shown again
-4. Click **Create Company**
+2. Fill in the company details (Name, Code, Address, Contact, GST, etc.)
+3. Fill in **Company Admin Login** — click the refresh icon to auto-generate a password, copy it
+4. Click **Create Company** and share the credentials with the Company Admin
 
-```
-  Company Details Form
-  ┌──────────────────────────────────────────────────────┐
-  │ Company Name    [ABC Manufacturing Pvt Ltd        ]  │
-  │ Company Code    [ABCM    ]                           │
-  │ Address         [Plot 5, MIDC Industrial Area     ]  │
-  │ City            [Pune    ]  State  [Maharashtra  ]   │
-  │ PIN             [411019  ]                           │
-  │ Contact Person  [Rajesh Sharma                    ]  │
-  │ Contact Email   [rajesh@abcmfg.com               ]  │
-  │ Contact Phone   [9876543210                       ]  │
-  ├──────────────────────────────────────────────────────┤
-  │ COMPANY ADMIN LOGIN (optional)                       │
-  │ Admin Name   [Rajesh Sharma                      ]   │
-  │ Login Email  [admin@abcmfg.com                   ]   │
-  │ Password     [Xk7#mP2q  ] 👁  🔄  📋              │
-  │              ⚠ Save this password — not shown again  │
-  ├──────────────────────────────────────────────────────┤
-  │ [Create Company]  [Cancel]                           │
-  └──────────────────────────────────────────────────────┘
-```
-
-> **Share with Company Admin:** Send them their login email and password privately (WhatsApp, email). They will use these to log in and manage their company.
+> **Copy the password before saving — it will not be shown again.**
 
 ---
 
@@ -213,18 +146,8 @@ The Super Admin sets up the system for everyone. This is typically done once dur
 **Where:** Sidebar → Administration → **Vendors**
 
 1. Click **Add Vendor**
-2. Fill in vendor details:
-   - Vendor Name (e.g., "XYZ Labour Contractors")
-   - Vendor Code (e.g., "XYZLC")
-   - Address, City, State, PIN
-   - Contact Person, Email, Phone
-3. Fill in **Vendor Admin Login**:
-   - Admin Name
-   - Login Email
-   - Password (auto-generate and copy)
-4. Click **Create Vendor**
-
-> **Share with Vendor Admin:** Send them their login email and password. They will log in to register workers and request company access.
+2. Fill in vendor details and **Vendor Admin Login** (same process as Company)
+3. Click **Create Vendor** and share credentials with the Vendor Admin
 
 ---
 
@@ -232,131 +155,116 @@ The Super Admin sets up the system for everyone. This is typically done once dur
 
 **Where:** Sidebar → Administration → **Users**
 
-The Users page lets Super Admin see and manage all accounts in the system — company admins, gate users, vendor admins, and vendor operators.
-
-**To create a new user:**
-1. Click **Add User**
-2. Enter Name, Email, Password
-3. Select Role
-4. If role is Company Admin or Gate User → select the Company
-5. If role is Vendor Admin or Vendor Operator → select the Vendor
-6. Click **Create User**
+Create any user type (Company Admin, Gate User, Vendor Admin, Vendor Operator). Select the role, then assign to the correct Company or Vendor.
 
 ---
 
 ### 5.4 Edit or Deactivate a Company / Vendor
 
-**Where:** Companies list or Vendors list
-
 Each card has a **⋮ (three-dot) menu** in the top-right corner:
-- **Edit** — update company/vendor details
-- **Deactivate / Activate** — disable login for the entire company or vendor
-
-```
-  ┌────────────────────────────────┐
-  │ ABC Manufacturing Pvt Ltd  [⋮] │ ← click the 3 dots
-  │ ABCM                           │
-  │ Rajesh Sharma                  │    ┌─────────────┐
-  │ rajesh@abcmfg.com              │    │ ✏ Edit      │
-  │ Pune, Maharashtra              │    │ 🔴 Deactivate│
-  │ ● active                       │    └─────────────┘
-  └────────────────────────────────┘
-```
+- **Edit** — update details
+- **Deactivate / Activate** — disable or enable the entire account
 
 ---
 
 ## 6. Company Admin Guide
 
-The Company Admin is responsible for:
-- Approving which vendors can deploy workers at their site
-- Creating gate user accounts for attendance marking
-- Viewing attendance reports for their site
+The Company Admin is responsible for approving vendors, creating gate users, and viewing attendance at their site.
 
 ### 6.1 Approve a Vendor
 
-When a vendor has requested access to work at your company, you will see their request in **Vendor Approvals**.
+When a vendor requests access to work at your company, their request appears in **Vendor Approvals**.
 
 **Where:** Sidebar → Administration → **Vendor Approvals**
 
-```
-  Vendor Approvals
-  ┌─────────────────────────────────────────────────────────┐
-  │ [Pending ①] [Approved] [Rejected] [Suspended] [All]    │
-  ├─────────────────────────────────────────────────────────┤
-  │                                                         │
-  │  XYZ Labour Contractors                   ● Pending    │
-  │  Contact: Suresh Kumar · suresh@xyz.com                │
-  │  Pune, Maharashtra                                      │
-  │                                                         │
-  │  [✓ Approve]  [Reason: _________________ ] [✗ Reject]  │
-  └─────────────────────────────────────────────────────────┘
-```
+The page shows tabs with counts: **Pending** | **Approved** | **Rejected** | **Suspended** | **All**
 
 **To approve:**
-1. Go to **Vendor Approvals** in the sidebar
-2. Click the **Pending** tab to see new requests
-3. Click **Approve** next to the vendor name
+1. Click the **Pending** tab
+2. Click **Approve** next to the vendor name
 
-**Once approved:**
-- The vendor's workers will be available for fingerprint attendance at your gate automatically
-- You do **not** need to manually add or assign workers — approval covers all current and future workers registered under that vendor
+**Once approved:** The vendor's workers are automatically available for fingerprint attendance — no further steps needed.
 
-**To reject:**
-1. Type a reason in the text box next to the vendor
-2. Click **Reject**
-3. The vendor can see the reason and request again after addressing the issue
+**To reject:** Click **Reject** and enter a reason. The vendor can see the reason and re-request after fixing the issue.
 
-**To suspend (temporarily block):**
-1. Click the **Approved** tab
-2. Click **Suspend** next to the vendor
+**To suspend (temporarily block):** Click the **Approved** tab, then click **Suspend** next to the vendor. Re-approve later when ready.
 
 ---
 
-### 6.2 Create Gate Users
+### 6.2 View Your Vendors
 
-Gate users are the accounts used at your entry/exit points to mark attendance.
+**Where:** Sidebar → Administration → **Vendors**
 
-**Where:** Sidebar → Administration → **Gate Users**
+Company users see vendors filtered by their approval status with tabs:
 
-1. Click **Add Gate User**
-2. Fill in:
-   - Full Name (e.g., "Security Gate 1" or "Ramesh Kumar")
-   - Email (e.g., gate1@abcmfg.com)
-   - Password — click 🔄 to auto-generate, 📋 to copy
-   - Phone (optional)
-3. Click **Create Gate User**
+| Tab | What it shows |
+|-----|--------------|
+| **Approved** | Vendors with active access — workers can attend |
+| **Pending** | Vendors awaiting your approval |
+| **Suspended** | Vendors temporarily blocked |
+| **Rejected** | Vendors you have declined |
+| **All** | Every vendor in your relationship list |
 
-```
-  Add Gate User
-  ┌──────────────────────────────────┐
-  │ Full Name  [Security Gate 1   ]  │
-  │ Email      [gate1@abcmfg.com  ]  │
-  │ Password   [Kp9#xM3r  ] 👁 🔄 📋 │
-  │            ⚠ Copy before saving  │
-  │ Phone      [9876540001        ]  │
-  ├──────────────────────────────────┤
-  │ [Create Gate User]  [Cancel]     │
-  └──────────────────────────────────┘
-```
-
-> **One account per gate:** If you have multiple entry points (Main Gate, Back Gate), create one gate user per entry point so attendance shows which gate it was marked at.
-
-> **Share credentials:** Give the gate user their email and password. They will log in from the PC/tablet at the gate.
+Each vendor card shows both the vendor's own status (active/inactive) and their approval status for your company.
 
 ---
 
-### 6.3 View Attendance
+### 6.3 Create Gate Users
+
+**Where:** Sidebar → Administration → **Users**
+
+1. Click **Add Gate User** (or **Add User** → select role: Gate User)
+2. Enter Name, Email, and auto-generate a password (copy before saving)
+3. Click **Create**
+
+> **One account per gate:** Create a separate gate user account for each entry/exit point (Main Gate, Back Gate, etc.) so attendance records show exactly which gate was used.
+
+---
+
+### 6.4 View Workers
+
+**Where:** Sidebar → Workers → **All Workers**
+
+The Workers list shows all workers deployed at your company, with three tabs:
+
+| Tab | What it shows |
+|-----|--------------|
+| **All Workers** | Every worker ever associated with your company |
+| **Current** | Workers currently deployed and active at your site |
+| **Previous** | Workers who previously attended but are no longer deployed |
+
+**Click any worker row** to open their **Worker Detail page** showing:
+- Total days worked, average hours, total IN/OUT counts
+- Monthly breakdown table with missed OUT count
+- Recent attendance log (specific to your company)
+
+The worker list also shows an **ID Document** column — click **Download** to get the worker's Aadhaar PDF or other ID document.
+
+---
+
+### 6.5 View Attendance
 
 **Where:** Sidebar → Attendance → **Attendance Log**
 
-You can see all attendance records for workers at your company:
-- Filter by date
-- See who is IN vs OUT
-- Check which vendor the worker belongs to
+The attendance log shows a **daily summary** — one row per worker per day:
+
+| Column | What it shows |
+|--------|--------------|
+| Worker | Name and vendor |
+| Company | Which company (your company) |
+| Location | Gate/location where attendance was marked |
+| First IN | Earliest IN time for the day (green) |
+| Last OUT | Latest OUT time for the day (blue) |
+| Duration | Total time from first IN to last OUT |
+| Status | Inside (still in) / Done (checked out) / Incomplete (no OUT recorded) |
+
+Use the **All / Current Workers / Previous Workers** tabs and date/name filters to narrow results.
+
+**Click any row** to open that worker's full detail analytics page.
 
 **Where:** Sidebar → Attendance → **Exceptions**
 
-This shows workers who marked **IN but have not marked OUT** — useful for end-of-day checks.
+Shows workers who are currently **inside (IN but no OUT)** — useful for end-of-day checks.
 
 ---
 
@@ -365,41 +273,18 @@ This shows workers who marked **IN but have not marked OUT** — useful for end-
 The Vendor Admin is responsible for:
 - Requesting access to company sites
 - Registering workers with their Aadhaar and fingerprint
+- Deploying workers to specific companies
 - Viewing attendance reports for their workers
 
 ### 7.1 Request Access to a Company
 
-Before your workers can mark attendance at a company, you must request access and wait for the company to approve you.
+Before your workers can mark attendance at a company, you must request access.
 
 **Where:** Sidebar → Administration → **Company Access**
 
-```
-  Company Access
-  ┌──────────────────────────────────────────────────────┐
-  │ How it works:                                        │
-  │ 1. Send request to company                          │
-  │ 2. Company admin approves                           │
-  │ 3. Your workers are automatically available at gate  │
-  ├──────────────────────────────────────────────────────┤
-  │  [Search companies...]                               │
-  │                                                      │
-  │  ABC Manufacturing Pvt Ltd          [No status]      │
-  │  Pune, Maharashtra                                   │
-  │  [→ Request Access]                                  │
-  │                                                      │
-  │  DEF Textiles Ltd                   ● Approved       │
-  │  Access active since 01-Jan-2025                     │
-  │                                                      │
-  │  GHI Chemicals                      ⏳ Pending        │
-  │  Waiting for company admin to review                 │
-  └──────────────────────────────────────────────────────┘
-```
-
-**To send a request:**
-1. Go to **Company Access** in the sidebar
-2. Find the company you want to work with
-3. Click **Request Access**
-4. Your request is sent. Wait for the company to approve (you will see status change to Approved)
+1. Find the company you want to work with
+2. Click **Request Access**
+3. Wait for the company admin to approve
 
 **Request statuses:**
 
@@ -415,96 +300,111 @@ Before your workers can mark attendance at a company, you must request access an
 
 ### 7.2 Register a Worker
 
-Workers must be registered before they can use the fingerprint scanner. Registration requires:
-1. **Aadhaar details** (via PDF upload)
-2. **Fingerprint scan** (via SecuGen scanner connected to your PC)
+Workers must be registered before they can use the fingerprint scanner.
 
 **Where:** Sidebar → Workers → **Register Worker**
 
 #### Step 1 — Aadhaar Details
 
-```
-  Worker Registration — Step 1 of 4: Aadhaar
-  ┌──────────────────────────────────────────────┐
-  │  📄 Upload Aadhaar PDF                       │
-  │                                              │
-  │  1. Click "Open UIDAI Portal"               │
-  │  2. Worker logs in with their Aadhaar number │
-  │  3. Download the masked Aadhaar PDF          │
-  │  4. Upload the PDF here                      │
-  │                                              │
-  │  PDF Password: First 4 letters of name       │
-  │  + birth year (e.g. NARE1955)                │
-  │                                              │
-  │  [Open UIDAI Portal]  [Upload PDF]           │
-  └──────────────────────────────────────────────┘
-```
-
-> **UIDAI Portal:** This is the government website. The worker needs their Aadhaar number and registered mobile number for OTP.
-
-After uploading, the form auto-fills with the worker's details from the PDF.
+1. Click **Open UIDAI Portal** — the worker logs in and downloads their masked Aadhaar PDF
+2. Upload the PDF. The PDF password is: **first 4 letters of name (UPPERCASE) + birth year**
+   - Example: Name "Narendra", Born 1955 → password `NARE1955`
+3. The form auto-fills with the worker's details from the PDF
 
 #### Step 2 — Review Worker Details
 
-Check the auto-filled information:
-- Name, Date of Birth, Gender
-- Address, City, State, PIN
-
-Make any corrections if needed. Click **Next**.
+Check the auto-filled information (Name, DOB, Gender, Address). Make any corrections. Click **Next**.
 
 #### Step 3 — Fingerprint Enrollment
 
-```
-  Worker Registration — Step 3 of 4: Fingerprint
-  ┌──────────────────────────────────────────────┐
-  │                                              │
-  │      [Fingerprint icon — pulsing]            │
-  │                                              │
-  │  Ask the worker to place their right index   │
-  │  finger firmly on the scanner                │
-  │                                              │
-  │  [Scan Fingerprint]    [Skip for now]        │
-  └──────────────────────────────────────────────┘
-```
-
 1. Connect the SecuGen fingerprint scanner to the PC
 2. Ask the worker to place their **right index finger** on the scanner
-3. Click **Scan Fingerprint**
-4. The light on the scanner will blink — keep the finger pressed for 2 seconds
-5. If successful, you will see a green checkmark
-6. Repeat if the scan fails (clean the sensor, press firmer)
+3. Click **Scan Fingerprint** — keep the finger pressed for 2 seconds
+4. Green checkmark = success
 
-> **Tip:** If the scanner is not available today, click **Skip for now**. You can enroll the fingerprint later from the Workers list. The worker will be marked as "Pending" until fingerprint is enrolled.
+> **Scanner not available?** Click **Skip for now**. The worker is saved as "Pending". Enroll fingerprint later from the Workers list. Workers cannot mark attendance until fingerprint is enrolled.
 
 #### Step 4 — Confirm & Save
 
-Review all details and click **Register Worker**. The worker is now registered and ready to use the fingerprint attendance system once your company access is approved.
+Review all details and click **Register Worker**.
 
 ---
 
-### 7.3 View Your Workers
+### 7.3 Edit a Worker
+
+**Where:** Workers list → click worker row → click **Edit**, or Workers list → **Edit** link
+
+In edit mode (Step 0), you can see the worker's existing documents:
+- If Aadhaar PDF was uploaded → **Download PDF** link is shown
+- If other ID document was uploaded → **Download** link is shown
+
+Upload new Aadhaar or ID documents to replace existing ones.
+
+---
+
+### 7.4 View Your Workers
 
 **Where:** Sidebar → Workers → **All Workers**
 
-You can see all workers registered under your vendor, their status, and fingerprint enrollment status.
+The Workers list has three tabs:
 
-| Worker Status | Meaning |
-|--------------|---------|
-| Pending | Registered but fingerprint not yet enrolled |
-| Active | Fully registered — can mark attendance |
-| Inactive | Disabled — cannot mark attendance |
+| Tab | What it shows |
+|-----|--------------|
+| **All Workers** | All workers registered under your vendor |
+| **Current** | Workers with active deployments at a company today |
+| **Previous** | Workers who have attended but are no longer actively deployed |
+
+The list also shows:
+- Fingerprint enrollment status (green fingerprint icon = enrolled)
+- Aadhaar number (masked)
+- ID Document with download link
+- Status badge (Pending / Active / Inactive)
+
+**Click any worker row** to open the **Worker Detail analytics page**.
 
 ---
 
-### 7.4 View Attendance
+### 7.5 Worker Detail Analytics
+
+**Where:** Click any worker row in the Workers list
+
+The detail page shows:
+- **Company dropdown** at the top — switch between companies to see that worker's history at each approved company
+- **Stats cards:** Total days, average daily hours, total IN/OUT count
+- **Monthly breakdown table:** Days worked, average hours, missed OUT count per month
+- **Deployment history:** All deployments for that worker at the selected company
+- **Recent attendance:** Last 10 attendance events
+
+---
+
+### 7.6 Deploy Workers to a Company
+
+**Where:** Sidebar → Workers → **Deploy Workers**
+
+After a company approves your vendor, you can deploy specific workers with a date range.
+
+The deployment list has three tabs:
+
+| Tab | What it shows |
+|-----|--------------|
+| **Current** | Active deployments within today's date range |
+| **Previous** | Expired or cancelled deployments |
+| **All** | All deployments |
+
+**To cancel a deployment:** Click **Cancel** next to any deployment. You can cancel even after attendance has been marked, **as long as the worker is not currently checked IN**.
+
+---
+
+### 7.7 View Attendance
 
 **Where:** Sidebar → Attendance → **Attendance Log**
 
-You can see attendance for all your workers across all companies that have approved you. The log shows:
-- Worker name
-- Company where attendance was marked
-- Time of IN / OUT
-- Gate name
+Shows a **daily summary** for all your workers across all companies:
+- One row per worker per day
+- First IN time, Last OUT time, total duration
+- Status: Inside / Done / Incomplete
+
+Use the **All / Current / Previous** tabs and date/name filters to narrow results. Click any row to open the worker's full detail page.
 
 ---
 
@@ -514,23 +414,11 @@ The Gate User's job is simple: **scan fingerprints** as workers enter and exit.
 
 ### 8.1 Setup — First Time Only (Per PC)
 
-The fingerprint scanner connects directly from the gate PC. Before using:
-
 1. Make sure the **SecuGen fingerprint scanner** is plugged into the USB port
 2. Open the browser and go to `https://localhost:8443`
 3. You will see a security warning — click **Advanced** → **Proceed to localhost**
 
-```
-  ⚠ Your connection is not private
-  
-  Attackers might be trying to...
-  
-  [Back to safety]      Advanced ▼
-  ─────────────────────────────────
-  → Proceed to localhost (unsafe)
-```
-
-> This is a one-time step per PC. It allows the browser to talk to the fingerprint scanner.
+> This is a one-time step per PC that allows the browser to talk to the fingerprint scanner.
 
 ---
 
@@ -538,55 +426,16 @@ The fingerprint scanner connects directly from the gate PC. Before using:
 
 **Where:** Sidebar → Attendance → **Mark Attendance**
 
-```
-  Mark Attendance
-  ┌──────────────────────────────────────────┐
-  │                                          │
-  │          [Fingerprint Circle]            │
-  │                                          │
-  │    "Click Scan to begin"                 │
-  │                                          │
-  │        [🔍 Scan Fingerprint]             │
-  └──────────────────────────────────────────┘
-```
-
 **Attendance flow for each worker:**
-
-```
-Gate User clicks [Scan Fingerprint]
-         │
-         ▼
-"Place your finger on the scanner NOW"
-         │
-         ▼
-Worker places finger on scanner
-         │
-         ▼
-System identifies worker (2-3 seconds)
-         │
-         ├── Match found ──────────────────────────►
-         │                                          │
-         │                              ┌───────────────────────┐
-         │                              │ ✓ SURESH KUMAR        │
-         │                              │ XYZ Labour Contractors│
-         │                              │ Pending: IN           │
-         │                              │                       │
-         │                              │ [Confirm IN] [Cancel] │
-         │                              └───────────────────────┘
-         │
-         └── No match ─── Error shown, try again
-```
-
-**Step by step:**
 
 1. Click **Scan Fingerprint**
 2. The circle starts pulsing — tell the worker to place their finger
 3. Worker places finger on scanner firmly
-4. System shows the worker's name and pending action (IN or OUT)
+4. System identifies the worker and shows their name + pending action (IN or OUT)
 5. Click **Confirm IN** or **Confirm OUT**
 6. Done! Repeat for the next worker
 
-> **IN vs OUT is automatic:** The system remembers if the worker's last action was IN or OUT. If they last marked IN, the next scan will show "Pending: OUT".
+> **IN vs OUT is automatic:** The system tracks whether the worker's last action was IN or OUT. If they last marked IN, the next scan shows "Pending: OUT".
 
 ---
 
@@ -596,45 +445,42 @@ System identifies worker (2-3 seconds)
 |---------|-----------|
 | "No finger detected" | Worker must place finger **immediately** after clicking Scan — don't wait |
 | "No fingerprint match found" | Worker's finger may be dirty/wet — clean and try again. If still fails, contact vendor admin to check enrollment |
-| "Cannot reach scanner" | Check USB connection. Open `https://localhost:8443` in browser and accept certificate |
+| "Cannot reach scanner" | Check USB connection. Open `https://localhost:8443` and accept certificate |
 | Scanner light doesn't blink | Scanner not connected — check USB. Try a different USB port |
-| "No workers found" | Vendor may not be approved for your company yet — contact company admin |
+| "No workers found" | Vendor may not be approved for your company — contact company admin |
 
 ---
 
 ## 9. Onboarding Checklist
 
-Use this checklist when setting up a new company or vendor on AMS.
-
 ### For Super Admin — New Company Setup
 
-- [ ] Create Company in AMS (Administration → Companies → Add Company)
+- [ ] Create Company (Administration → Companies → Add Company)
 - [ ] Generate and copy Company Admin password
-- [ ] Share login credentials with Company Admin (email + password)
-- [ ] Confirm Company Admin can log in successfully
+- [ ] Share login credentials with Company Admin
+- [ ] Confirm Company Admin can log in
 
 ### For Super Admin — New Vendor Setup
 
-- [ ] Create Vendor in AMS (Administration → Vendors → Add Vendor)
+- [ ] Create Vendor (Administration → Vendors → Add Vendor)
 - [ ] Generate and copy Vendor Admin password
-- [ ] Share login credentials with Vendor Admin (email + password)
-- [ ] Confirm Vendor Admin can log in successfully
+- [ ] Share login credentials with Vendor Admin
+- [ ] Confirm Vendor Admin can log in
 
 ### For Vendor Admin — Getting Started
 
-- [ ] Log in to AMS with provided credentials
-- [ ] Go to **Company Access** → Find your client companies → **Request Access**
-- [ ] Wait for company approval (follow up with company admin if needed)
-- [ ] Once approved, register workers:
-  - [ ] Register at least one worker with Aadhaar PDF
-  - [ ] Enroll their fingerprint (scanner must be connected)
-  - [ ] Confirm worker status shows **Active**
+- [ ] Log in to AMS
+- [ ] Go to **Company Access** → find client company → **Request Access**
+- [ ] Wait for company approval
+- [ ] Register workers (Aadhaar PDF + fingerprint enrollment)
+- [ ] Go to **Deploy Workers** → assign workers to the company with date range
+- [ ] Confirm worker status shows **Active**
 
 ### For Company Admin — Getting Started
 
-- [ ] Log in to AMS with provided credentials
-- [ ] Go to **Vendor Approvals** → Check for pending requests → **Approve** vendors
-- [ ] Go to **Gate Users** → **Add Gate User** for each entry point
+- [ ] Log in to AMS
+- [ ] Go to **Vendor Approvals** → **Pending** tab → **Approve** vendors
+- [ ] Go to **Users** → **Add Gate User** for each entry point
 - [ ] Share gate user credentials with security/HR staff at each gate
 - [ ] Confirm gate user can log in and reach the Mark Attendance page
 
@@ -651,7 +497,7 @@ Use this checklist when setting up a new company or vendor on AMS.
 
 **Q: A worker's fingerprint is not being recognized. What do I do?**
 
-First, try cleaning the worker's finger and the scanner sensor. Ask them to press harder and keep the finger still. If it still fails, the vendor admin should check if the fingerprint was enrolled correctly (Workers list → worker name → re-enroll fingerprint).
+First, try cleaning the worker's finger and the scanner sensor. Ask them to press harder and keep the finger still. If it still fails, the vendor admin should re-enroll the fingerprint from the Workers list → click the worker → re-enroll.
 
 ---
 
@@ -677,31 +523,49 @@ The Vendor Admin or Vendor Operator can register new workers at any time via **R
 
 **Q: Can a worker be at two companies on the same day?**
 
-Yes. If your vendor is approved at multiple companies, a worker can mark IN/OUT at any of them. Each record shows which company the attendance was marked at.
+Yes. If your vendor is approved at multiple companies, a worker can mark IN/OUT at any of them. Each record shows which company it was marked at.
 
 ---
 
 **Q: What if a worker forgot to mark OUT?**
 
-The Company Admin can see these in **Attendance → Exceptions**. Manual corrections can be made by the Company Admin from the Attendance Log.
+The Company Admin can see these workers in **Attendance → Exceptions**. Manual corrections can be made from there.
+
+---
+
+**Q: How do I view a worker's full attendance history?**
+
+Click any worker's row in the **Workers** list or **Attendance Log** to open the **Worker Detail** analytics page. It shows total days worked, average hours, monthly breakdowns, and recent attendance — all scoped to your company.
+
+---
+
+**Q: Can I download a worker's Aadhaar document?**
+
+Vendor users can download any worker's Aadhaar PDF from the Workers list (ID Document column) or in edit mode (Step 0). Company admin/gate users can also download if the worker has attended or been deployed at their company.
+
+---
+
+**Q: I cancelled a worker deployment but they still appear in the Previous Workers tab. Is that correct?**
+
+Yes. Once a worker has marked attendance at your company, they will always appear in the **Previous Workers** tab — even if the deployment is later cancelled. This ensures a complete history is maintained.
 
 ---
 
 **Q: How do I change a gate user's password?**
 
-The Company Admin goes to **Gate Users**, clicks the edit (pencil) icon next to the user, enters a new password, and saves.
+The Company Admin goes to **Users**, finds the gate user, clicks the edit icon, enters a new password, and saves.
 
 ---
 
 **Q: I cannot log in — it says incorrect password.**
 
-Make sure you are using the exact email and password provided by your admin. Passwords are case-sensitive. If you are still unable to log in, contact your Super Admin or Company Admin to reset your password.
+Make sure you are using the exact email and password provided by your admin. Passwords are case-sensitive. Contact your Super Admin or Company Admin to reset your password.
 
 ---
 
 **Q: The vendor was approved but we want to stop them. What do we do?**
 
-The Company Admin goes to **Vendor Approvals → Approved tab**, then clicks **Suspend** next to the vendor. Their workers' fingerprints will immediately stop working at your gate. You can re-approve them later.
+The Company Admin goes to **Vendor Approvals → Approved** tab, then clicks **Suspend** next to the vendor. Their workers' fingerprints will immediately stop working at your gate. You can re-approve them later.
 
 ---
 
