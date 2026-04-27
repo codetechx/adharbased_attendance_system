@@ -58,7 +58,7 @@ export default function App() {
           </PrivateRoute>
         } />
         <Route path="profile" element={
-          <PrivateRoute roles={["vendor_admin", "vendor_operator"]}>
+          <PrivateRoute roles={["vendor_admin"]}>
             <VendorProfile />
           </PrivateRoute>
         } />
@@ -68,7 +68,7 @@ export default function App() {
           </PrivateRoute>
         } />
         <Route path="vendors/company-access" element={
-          <PrivateRoute roles={["vendor_admin", "vendor_operator"]}>
+          <PrivateRoute roles={["vendor_admin"]}>
             <VendorCompanyAccess />
           </PrivateRoute>
         } />

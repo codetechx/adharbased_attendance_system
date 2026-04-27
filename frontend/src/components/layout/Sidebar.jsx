@@ -21,9 +21,9 @@ const NAV = [
       { to: "/users",                  icon: UserCog,     label: "Users",           roles: ["company_admin"] },
       { to: "/users",                  icon: UserCog,     label: "Operators",       roles: ["vendor_admin"] },
       { to: "/vendors",                icon: Users,       label: "Vendors",         roles: ["super_admin", "company_admin", "company_gate"], end: true },
-      { to: "/profile",               icon: Settings,    label: "My Organization", roles: ["vendor_admin", "vendor_operator"] },
+      { to: "/profile",               icon: Settings,    label: "My Organization", roles: ["vendor_admin"] },
       { to: "/vendors/approval",       icon: ShieldCheck, label: "Vendor Approvals",roles: ["super_admin", "company_admin"] },
-      { to: "/vendors/company-access", icon: Building2,   label: "Company Access",  roles: ["vendor_admin", "vendor_operator"] },
+      { to: "/vendors/company-access", icon: Building2,   label: "Company Access",  roles: ["vendor_admin"] },
     ],
   },
   {

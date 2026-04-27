@@ -191,7 +191,8 @@
   <a href="#super-admin">Super Admin</a>
   <a href="#company-admin">Company Admin</a>
   <a href="#vendor-admin">Vendor Admin</a>
-  <a href="#gate-user">Gate User</a>
+  <a href="#gate-user">Gate / Dept User</a>
+  <a href="#vendor-operator">Vendor Operator</a>
   <a href="#checklist">Checklist</a>
   <a href="#faq">FAQ</a>
 </nav>
@@ -297,12 +298,12 @@
         <tr>
           <td><span class="badge role-company">Company Admin</span></td>
           <td>HR Manager / Site Manager</td>
-          <td>Approves vendors, creates gate users, views attendance at their company</td>
+          <td>Approves vendors, creates site users (Gate/Department/Other), views attendance</td>
         </tr>
         <tr>
-          <td><span class="badge role-gate">Gate User</span></td>
-          <td>Security guard / HR at gate</td>
-          <td>Scans fingerprints to mark workers IN and OUT only</td>
+          <td><span class="badge role-gate">Gate / Dept User</span></td>
+          <td>Security guard, HR, or department staff</td>
+          <td>Scans fingerprints to mark workers IN/OUT — tagged with their gate or department location</td>
         </tr>
         <tr>
           <td><span class="badge role-vendor">Vendor Admin</span></td>
@@ -562,29 +563,61 @@
   </div>
 
   <div class="card">
-    <h3>6.2 — Create Gate Users</h3>
-    <p style="margin-bottom:14px">Sidebar → Administration → <strong>Gate Users</strong> → click <strong>Add Gate User</strong></p>
+    <h3>6.2 — Create Site Users (Gate / Department / Other)</h3>
+    <p style="margin-bottom:12px">Sidebar → Administration → <strong>Users</strong> → click <strong>Add User</strong></p>
+    <p style="margin-bottom:14px">Company Admin can create three types of site users. Each type marks attendance tagged with their specific location — so you always know <em>where</em> each scan happened.</p>
+
+    <table style="margin-bottom:18px">
+      <thead><tr><th>Login Type</th><th>Who uses it</th><th>Location Name example</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Gate</strong></td>
+          <td>Security guard at a main entry / exit point</td>
+          <td>Gate 1, East Gate, Main Gate, Back Entry</td>
+        </tr>
+        <tr>
+          <td><strong>Department</strong></td>
+          <td>HR or admin inside a building or department</td>
+          <td>Finance Dept, IT Block, Production Floor, HR Office</td>
+        </tr>
+        <tr>
+          <td><strong>Other / Checkpoint</strong></td>
+          <td>Any other scanning point on site</td>
+          <td>Canteen, Parking Area, Building B, Warehouse Entry</td>
+        </tr>
+      </tbody>
+    </table>
+
     <div class="steps">
       <div class="step" style="border-color:var(--cyan)">
         <span class="step-num" style="background:var(--cyan)">1</span>
-        <div><h4>Enter name and email</h4><p>Use a descriptive name like "Main Gate" or "Back Entry" so it's clear which gate the attendance is from.</p></div>
+        <div><h4>Enter name and email</h4><p>Use a descriptive name like <em>"Main Gate Guard"</em> or <em>"HR Dept – Finance"</em> so it is immediately clear which point this account covers.</p></div>
       </div>
       <div class="step" style="border-color:var(--cyan)">
         <span class="step-num" style="background:var(--cyan)">2</span>
-        <div><h4>Generate and copy the password</h4><p>Click 🔄 to auto-generate a strong password. Click 📋 to copy. Share with the security guard or HR at that gate.</p></div>
+        <div>
+          <h4>Select Login Type and Location Name</h4>
+          <p>Choose <strong>Gate</strong>, <strong>Department</strong>, or <strong>Other</strong>. Then type the specific location name (e.g. "Gate 1"). All attendance marked by this user will be tagged with that location in the attendance log.</p>
+        </div>
       </div>
       <div class="step" style="border-color:var(--cyan)">
         <span class="step-num" style="background:var(--cyan)">3</span>
-        <div><h4>Click Create Gate User</h4><p>Repeat for each entry point. The gate user can log in immediately.</p></div>
+        <div><h4>Generate password and save</h4><p>Click 🔄 to auto-generate a strong password. Click 📋 to copy. <strong>This password is shown only once — copy it before saving.</strong> Share with the person who will use this account.</p></div>
       </div>
     </div>
     <div class="callout warn" style="margin-top:16px">
-      <strong>⚠ One account per gate:</strong> If you have Main Gate and Back Gate, create two separate gate user accounts so attendance records show which gate it was marked at.
+      <strong>⚠ One account per scanning point:</strong> Create a separate user account for each gate, department, or checkpoint. This ensures attendance records correctly show which location each scan came from.
+    </div>
+    <div class="callout tip" style="margin-top:12px">
+      <strong>💡 Example setup for a site with 2 gates + 1 department:</strong><br>
+      • Account 1 — Gate → "Main Gate"<br>
+      • Account 2 — Gate → "Back Entry"<br>
+      • Account 3 — Department → "HR Office"
     </div>
   </div>
 
   <div class="card">
-    <h3>6.2 — View Your Vendors</h3>
+    <h3>6.3 — View Your Vendors</h3>
     <p style="margin-bottom:14px">Sidebar → Administration → <strong>Vendors</strong></p>
     <p>As a Company Admin you see only vendors associated with your company, filtered by approval status:</p>
     <table style="margin-top:12px">
@@ -603,7 +636,7 @@
   </div>
 
   <div class="card">
-    <h3>6.3 — View Workers at Your Company</h3>
+    <h3>6.4 — View Workers at Your Company</h3>
     <p style="margin-bottom:14px">Sidebar → Workers → <strong>All Workers</strong></p>
     <table>
       <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
@@ -618,7 +651,7 @@
   </div>
 
   <div class="card">
-    <h3>6.4 — View Attendance &amp; Exceptions</h3>
+    <h3>6.5 — View Attendance &amp; Exceptions</h3>
     <table>
       <thead><tr><th>Page</th><th>Where</th><th>What it shows</th></tr></thead>
       <tbody>
@@ -814,7 +847,35 @@
   </div>
 
   <div class="card">
-    <h3>7.6 — Attendance Log</h3>
+    <h3>7.6 — Manage Operators</h3>
+    <p style="margin-bottom:14px">Sidebar → Administration → <strong>Operators</strong> → click <strong>Add Operator</strong></p>
+    <p style="margin-bottom:12px">As Vendor Admin you can create <strong>Vendor Operator</strong> accounts for your field staff who need to register workers but do not need access to company requests or vendor settings.</p>
+    <table style="margin-bottom:14px">
+      <thead><tr><th>Operator can do</th><th>Operator cannot do</th></tr></thead>
+      <tbody>
+        <tr><td>Register new workers</td><td>Request company access</td></tr>
+        <tr><td>View all workers list</td><td>View or edit vendor profile</td></tr>
+        <tr><td>View attendance log</td><td>Manage other operators</td></tr>
+        <tr><td>Download worker documents</td><td>Deploy workers</td></tr>
+      </tbody>
+    </table>
+    <div class="steps">
+      <div class="step" style="border-color:var(--yellow)">
+        <span class="step-num" style="background:var(--yellow)">1</span>
+        <div><h4>Enter operator name and email</h4><p>Use their real name and work email. Role is automatically set to Vendor Operator — no selection needed.</p></div>
+      </div>
+      <div class="step" style="border-color:var(--yellow)">
+        <span class="step-num" style="background:var(--yellow)">2</span>
+        <div><h4>Generate password and save</h4><p>Click 🔄 to auto-generate a strong password. Click 📋 to copy. <strong>Share the password immediately</strong> — it will not be shown again.</p></div>
+      </div>
+    </div>
+    <div class="callout tip" style="margin-top:12px">
+      <strong>💡 When to create operators:</strong> If your vendor has multiple HR staff who register workers on the field, give each one an Operator account. This keeps your Vendor Admin credentials secure while letting field staff do registrations.
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>7.7 — Attendance Log</h3>
     <p style="margin-bottom:14px">Sidebar → Attendance → <strong>Attendance Log</strong></p>
     <p>The attendance log now shows a <strong>daily summary</strong> — one row per worker per day across all companies:</p>
     <table style="margin-top:12px">
@@ -837,7 +898,7 @@
      SECTION 8 — GATE USER
 ════════════════════════════════════════════════════════ -->
 <section id="gate-user">
-  <div class="section-title"><span class="num">8</span> <span style="color:var(--cyan)">Gate User</span> Guide</div>
+  <div class="section-title"><span class="num">8</span> <span style="color:var(--cyan)">Gate / Department User</span> Guide</div>
 
   <!-- Attendance Marking Flow Diagram -->
   <div class="diagram">
@@ -897,8 +958,12 @@
     </svg>
   </div>
 
+  <div class="card" style="margin-top:0">
+    <p>This guide applies to <strong>Gate</strong>, <strong>Department</strong>, and <strong>Other/Checkpoint</strong> users — all types mark attendance the same way. Every scan is automatically tagged with your <strong>Login Type and Location Name</strong> as configured by your Company Admin (e.g. "Gate 1", "HR Office", "Canteen").</p>
+  </div>
+
   <div class="card">
-    <h3>8.1 — One-Time Setup on the Gate PC</h3>
+    <h3>8.1 — One-Time Setup on the Gate / Dept PC</h3>
     <div class="callout warn">
       <strong>⚠ Do this once per PC before first use:</strong>
       The fingerprint scanner needs browser permission to connect.
@@ -944,10 +1009,51 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════════════
-     SECTION 9 — CHECKLIST
+     SECTION 9 — VENDOR OPERATOR
+════════════════════════════════════════════════════════ -->
+<section id="vendor-operator">
+  <div class="section-title"><span class="num">9</span> <span style="color:var(--yellow)">Vendor Operator</span> Guide</div>
+
+  <div class="card">
+    <p>A <strong>Vendor Operator</strong> account is created by the Vendor Admin for field staff who need to register workers. Operators have a focused, limited interface — they see only what is needed for worker registration.</p>
+    <table style="margin-top:14px">
+      <thead><tr><th>Feature</th><th>Access</th></tr></thead>
+      <tbody>
+        <tr><td>Dashboard</td><td>✅ Yes — today's summary</td></tr>
+        <tr><td>All Workers list</td><td>✅ Yes — view and search workers</td></tr>
+        <tr><td>Register Worker</td><td>✅ Yes — full 4-step registration wizard</td></tr>
+        <tr><td>Attendance Log</td><td>✅ Yes — read only</td></tr>
+        <tr><td>Company Access requests</td><td>❌ No — Vendor Admin only</td></tr>
+        <tr><td>My Organisation (vendor profile)</td><td>❌ No — Vendor Admin only</td></tr>
+        <tr><td>Deploy Workers</td><td>❌ No — Vendor Admin only</td></tr>
+        <tr><td>Manage Operators</td><td>❌ No — Vendor Admin only</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>9.1 — Register a Worker as Operator</h3>
+    <p>Sidebar → Workers → <strong>Register Worker</strong></p>
+    <p style="margin-top:8px">The registration process is identical to the Vendor Admin flow — refer to <strong>Section 7.2</strong> for the full step-by-step guide (Aadhaar upload → details → fingerprint → confirm).</p>
+    <div class="callout tip" style="margin-top:12px">
+      <strong>💡 Note:</strong> Workers registered by an Operator are automatically assigned to the same vendor. The Vendor Admin will see them in the workers list and can deploy them to companies.
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>9.2 — Viewing Workers and Attendance</h3>
+    <p>Operators can view the full Workers list (All / Current / Previous tabs) and click any row to see that worker's attendance analytics. The Attendance Log is also available in read-only mode — filtering by date, name, and deployment tab works the same way.</p>
+    <div class="callout warn" style="margin-top:12px">
+      <strong>⚠ Operators cannot mark attendance</strong> — that is the Gate User's role. If you need to mark attendance, contact your Company Admin to set up a Gate User account at the site.
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     SECTION 10 — CHECKLIST
 ════════════════════════════════════════════════════════ -->
 <section id="checklist">
-  <div class="section-title"><span class="num">9</span> Onboarding Checklist</div>
+  <div class="section-title"><span class="num">10</span> Onboarding Checklist</div>
 
   <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(360px,1fr)); gap:20px">
 
@@ -989,14 +1095,25 @@
       <ul class="checklist">
         <li>Log in to AMS with provided credentials</li>
         <li>Go to Vendor Approvals → Pending tab → Approve vendors</li>
-        <li>Go to Gate Users → Add Gate User (one per entry point)</li>
-        <li>Share gate user credentials with security / HR staff at each gate</li>
-        <li>Confirm gate user can log in and reach Mark Attendance</li>
+        <li>Go to Users → Add User — select Login Type (Gate / Department / Other) and enter the Location Name</li>
+        <li>Create one account per scanning point (gate, department, checkpoint)</li>
+        <li>Share credentials with the person at each scanning point</li>
+        <li>Confirm each user can log in and reach Mark Attendance</li>
       </ul>
     </div>
 
     <div class="card">
-      <h3 style="color:var(--cyan); margin-bottom:14px">🩵 Gate User — Gate PC Setup (One Time)</h3>
+      <h3 style="color:var(--yellow); margin-bottom:14px">🟡 Vendor Operator — Getting Started</h3>
+      <ul class="checklist">
+        <li>Log in to AMS with credentials provided by your Vendor Admin</li>
+        <li>Go to Workers → Register Worker to add new workers</li>
+        <li>Upload Aadhaar PDF, review auto-filled details, enroll fingerprint</li>
+        <li>Confirm worker status shows Active after fingerprint enrollment</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3 style="color:var(--cyan); margin-bottom:14px">🩵 Gate / Department User — PC Setup (One Time)</h3>
       <ul class="checklist">
         <li>Plug SecuGen scanner into USB on gate PC</li>
         <li>Open browser → go to <code>https://localhost:8443</code> → Accept certificate</li>
@@ -1013,7 +1130,7 @@
      SECTION 10 — FAQ
 ════════════════════════════════════════════════════════ -->
 <section id="faq">
-  <div class="section-title"><span class="num">10</span> Frequently Asked Questions</div>
+  <div class="section-title"><span class="num">11</span> Frequently Asked Questions</div>
 
   <details>
     <summary>A worker's fingerprint is not being recognised. What do I do?</summary>

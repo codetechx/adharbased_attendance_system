@@ -28,7 +28,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/recent-activity', [DashboardController::class, 'recentActivity']);
 
     // ── Users ─────────────────────────────────────────────────────────────────
-    Route::middleware('role:super_admin,company_admin')->group(function () {
+    Route::middleware('role:super_admin,company_admin,vendor_admin')->group(function () {
         Route::apiResource('users', UserController::class);
     });
 
