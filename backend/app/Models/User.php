@@ -81,6 +81,11 @@ class User extends Authenticatable
         return in_array($this->role, [self::ROLE_VENDOR_ADMIN, self::ROLE_VENDOR_OP]);
     }
 
+    public function isVendorAdmin(): bool
+    {
+        return $this->role === self::ROLE_VENDOR_ADMIN;
+    }
+
     public function isGateUser(): bool
     {
         return $this->role === self::ROLE_COMPANY_GATE;

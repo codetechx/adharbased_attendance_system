@@ -62,8 +62,8 @@ class VendorController extends Controller
     public function update(Request $request, Vendor $vendor): JsonResponse
     {
         $user = $request->user();
-        if (! $user->isSuperAdmin() && ! ($user->isVendorUser() && $user->vendor_id === $vendor->id)) {
-            abort(403, 'Access denied.');
+        if (! $user->isSuperAdmin() && ! ($user->isVendorAdmin() && $user->vendor_id === $vendor->id)) {
+            abort(403, 'Only Vendor Admin can edit vendor details.');
         }
 
         $data = $request->validate([
@@ -99,8 +99,8 @@ class VendorController extends Controller
     {
         $user = $request->user();
 
-        if ($user->isVendorUser() && $user->vendor_id !== $vendor->id) {
-            abort(403, 'Cannot request on behalf of another vendor.');
+        if (! $user->isSuperAdmin() && ! ($user->isVendorAdmin() && $user->vendor_id === $vendor->id)) {
+            abort(403, 'Only Vendor Admin can send company access requests.');
         }
 
         $existing = $vendor->companies()->where('company_id', $company->id)->first();
@@ -130,8 +130,8 @@ class VendorController extends Controller
     {
         $user = $request->user();
 
-        if (! $user->isSuperAdmin() && ! ($user->isVendorUser() && $user->vendor_id === $vendor->id)) {
-            abort(403);
+        if (! $user->isSuperAdmin() && ! ($user->isVendorAdmin() && $user->vendor_id === $vendor->id)) {
+            abort(403, 'Only Vendor Admin can view company relationships.');
         }
 
         $companies = $vendor->companies()
@@ -147,8 +147,8 @@ class VendorController extends Controller
     {
         $user = $request->user();
 
-        if (! $user->isSuperAdmin() && ! ($user->isVendorUser() && $user->vendor_id === $vendor->id)) {
-            abort(403);
+        if (! $user->isSuperAdmin() && ! ($user->isVendorAdmin() && $user->vendor_id === $vendor->id)) {
+            abort(403, 'Only Vendor Admin can view available companies.');
         }
 
         $existing = $vendor->companies()
